@@ -1,0 +1,842 @@
+'use client'
+
+import { useState, useMemo, useEffect } from 'react'
+import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Calendar } from '@/components/ui/calendar'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { 
+  CalendarIcon, 
+  Download, 
+  Save, 
+  Users,
+  UserCheck,
+  UserX,
+  Clock,
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  Filter,
+  ChevronDown,
+  Search,
+  Bell,
+  Settings,
+  BarChart3,
+  Activity,
+  CheckCircle,
+  XCircle,
+  Timer
+} from 'lucide-react'
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isSameDay, subDays } from 'date-fns'
+import { cn } from '@/lib/utils'
+
+interface StudentAttendance {
+  id: string
+  rollNumber: string
+  name: string
+  grade: string
+  section: string
+  status: 'Present' | 'Absent' | 'Late' | 'HalfDay' | 'Unmarked'
+  checkIn?: string
+  checkOut?: string
+  avatar?: string
+  email?: string
+  phone?: string
+}
+
+interface AttendanceTrend {
+  date: Date
+  present: number
+  absent: number
+  late: number
+  halfDay: number
+  rate: number
+}
+
+interface Grade {
+  id: string
+  name: string
+}
+
+interface Section {
+  id: string
+  name: string
+  gradeId: string
+}
+
+// Force recompile - attendance page component
+export default function AttendancePage() {
+  const [date, setDate] = useState<Date | undefined>(new Date())
+  const [grade, setGrade] = useState<string>('all')
+  const [section, setSection] = useState<string>('all')
+  const [attendanceData, setAttendanceData] = useState<StudentAttendance[]>([])
+  const [searchTerm, setSearchTerm] = useState<string>('')
+  const [selectedView, setSelectedView] = useState<'overview' | 'detailed'>('overview')
+  const [trendData, setTrendData] = useState<AttendanceTrend[]>([])
+  const [currentDate, setCurrentDate] = useState<Date | null>(null)
+  
+  const [grades, setGrades] = useState<Grade[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [loading, setLoading] = useState(false)
+  const [statsLoading, setStatsLoading] = useState(false)
+
+  // Initialize client-side data
+  useEffect(() => {
+    const now = new Date()
+    setCurrentDate(now)
+    // Removed generateMockTrendData call
+    fetchGrades()
+    fetchSections()
+  }, [])
+
+  // Fetch stats and trends
+  const fetchStats = async () => {
+    if (!date) return
+    setStatsLoading(true)
+    try {
+        const res = await fetch(`/api/attendance/stats?date=${date.toISOString()}`)
+        const data = await res.json()
+        
+        // Convert date strings back to Date objects
+        const formattedTrends = data.trends.map((t: any) => ({
+            ...t,
+            date: new Date(t.date)
+        }))
+        setTrendData(formattedTrends)
+    } catch (error) {
+        console.error('Failed to fetch stats', error)
+    } finally {
+        setStatsLoading(false)
+    }
+  }
+
+  // Fetch grades
+  const fetchGrades = async () => {
+    try {
+      const res = await fetch('/api/grades')
+      const data = await res.json()
+      setGrades(data)
+    } catch (error) {
+      console.error('Failed to fetch grades', error)
+    }
+  }
+
+  // Fetch sections
+  const fetchSections = async (gradeId?: string) => {
+    try {
+      const url = '/api/sections'
+      const res = await fetch(url)
+      const data = await res.json()
+      
+      // Extract sections from the API response
+      if (data.grades && Array.isArray(data.grades)) {
+        let filteredSections = data.grades.flatMap(grade => grade.sections || [])
+        
+        // Filter by grade if specified
+        if (gradeId && gradeId !== 'all') {
+          filteredSections = filteredSections.filter(section => 
+            data.grades.find(grade => 
+              grade.id === gradeId && grade.sections.some(s => s.id === section.id)
+            )
+          )
+        }
+        
+        setSections(filteredSections)
+      } else {
+        setSections([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch sections', error)
+      setSections([])
+    }
+  }
+
+  // Fetch attendance data
+  const fetchAttendance = async () => {
+    if (!date) return
+    
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.append('date', date.toISOString())
+      if (grade && grade !== 'all') params.append('gradeId', grade)
+      if (section && section !== 'all') params.append('sectionId', section)
+      if (searchTerm) params.append('search', searchTerm)
+
+      const res = await fetch(`/api/attendance?${params.toString()}`)
+      const data = await res.json()
+      setAttendanceData(data)
+    } catch (error) {
+      console.error('Failed to fetch attendance', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Update sections when grade changes
+  useEffect(() => {
+    if (grade && grade !== 'all') {
+      fetchSections(grade)
+    } else {
+      fetchSections()
+    }
+  }, [grade])
+
+  // Fetch attendance and stats when filters change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchAttendance()
+      // Only fetch stats if date changes, strictly speaking stats are global for the date
+      // But let's just fetch them whenever main data fetches for simplicity
+      fetchStats()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [date, grade, section, searchTerm])
+
+  const stats = useMemo(() => {
+    // We can use the fetched trendData for the "today" stats if we want global stats
+    // Or use attendanceData for "filtered" stats.
+    // The previous implementation used attendanceData.
+    // Let's stick to attendanceData for the "Daily Stats" cards to reflect the current filter (e.g. "Grade 9 Attendance")
+    // BUT, if we want global stats, we should use data from `fetchStats`.
+    // Given the UI context "Present Today", it usually means "Whole School" unless filtered.
+    // Let's keep it based on attendanceData for now as it makes the filters interactive.
+    
+    const total = attendanceData.length
+    const present = attendanceData.filter((s) => s.status === 'Present').length
+    const absent = attendanceData.filter((s) => s.status === 'Absent').length
+    const late = attendanceData.filter((s) => s.status === 'Late').length
+    const halfDay = attendanceData.filter((s) => s.status === 'HalfDay').length
+    
+    // Effective present for rate calculation
+    const effectivePresent = present + late + halfDay
+
+    return {
+      total,
+      present,
+      absent,
+      late,
+      halfDay,
+      rate: total > 0 ? (effectivePresent / total * 100) : 0
+    }
+  }, [attendanceData])
+
+  const getStatusConfig = (status: string) => {
+    const configs = {
+      Present: {
+        icon: CheckCircle,
+        color: 'emerald',
+        bgClass: 'bg-emerald-500',
+        textClass: 'text-emerald-600',
+        lightBgClass: 'bg-emerald-100',
+        darkTextClass: 'dark:text-emerald-400'
+      },
+      Absent: {
+        icon: XCircle,
+        color: 'rose',
+        bgClass: 'bg-rose-500',
+        textClass: 'text-rose-600',
+        lightBgClass: 'bg-rose-100',
+        darkTextClass: 'dark:text-rose-400'
+      },
+      Late: {
+        icon: Clock,
+        color: 'amber',
+        bgClass: 'bg-amber-500',
+        textClass: 'text-amber-600',
+        lightBgClass: 'bg-amber-100',
+        darkTextClass: 'dark:text-amber-400'
+      },
+      HalfDay: {
+        icon: Timer,
+        color: 'purple',
+        bgClass: 'bg-purple-500',
+        textClass: 'text-purple-600',
+        lightBgClass: 'bg-purple-100',
+        darkTextClass: 'dark:text-purple-400'
+      },
+      Unmarked: {
+        icon: AlertCircle,
+        color: 'slate',
+        bgClass: 'bg-slate-500',
+        textClass: 'text-slate-600',
+        lightBgClass: 'bg-slate-100',
+        darkTextClass: 'dark:text-slate-400'
+      }
+    }
+    return configs[status as keyof typeof configs] || configs.Unmarked
+  }
+
+  const handleStatusChange = (studentId: string, newStatus: StudentAttendance['status']) => {
+    setAttendanceData(prev =>
+      prev.map(student =>
+        student.id === studentId
+          ? { ...student, status: newStatus }
+          : student
+      )
+    )
+  }
+
+  const handleMarkAllPresent = () => {
+    setAttendanceData(prev =>
+      prev.map(student => ({ ...student, status: 'Present' }))
+    )
+  }
+
+  const getTrendIcon = (current: number, previous: number) => {
+    if (current > previous) return <TrendingUp className="h-4 w-4 text-emerald-500" />
+    if (current < previous) return <TrendingDown className="h-4 w-4 text-rose-500" />
+    return <Activity className="h-4 w-4 text-slate-400" />
+  }
+
+  const getTrendColor = (current: number, previous: number) => {
+    if (current > previous) return 'text-emerald-500'
+    if (current < previous) return 'text-rose-500'
+    return 'text-slate-500'
+  }
+
+  const handleSaveAttendance = async () => {
+    if (!date) return
+    try {
+      await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: date.toISOString(),
+          attendanceData: attendanceData.map(s => ({ id: s.id, status: s.status }))
+        })
+      })
+      // Could add toast here
+      alert('Attendance saved successfully')
+      // Refresh stats to reflect changes
+      fetchStats()
+    } catch (error) {
+      console.error('Failed to save attendance', error)
+      alert('Failed to save attendance')
+    }
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50 dark:from-slate-900 dark:via-blue-900/10 dark:to-indigo-900/20">
+        {/* Sophisticated Header */}
+        <div className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-10"></div>
+          <div className="relative">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 p-8">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xl">
+                    <Users className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                      Attendance Management
+                    </h1>
+                    <p className="text-slate-600 dark:text-slate-400 text-lg">
+                      Real-time student attendance tracking and analytics
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    Live Data
+                  </span>
+                  <span>•</span>
+                  <span>{currentDate ? format(currentDate, 'EEEE, MMMM d, yyyy') : 'Loading...'}</span>
+                  <span>•</span>
+                  <span>{attendanceData.length} Students</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <Button className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg transition-all duration-300">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Report
+                </Button>
+                <Button variant="outline" size="icon" className="bg-white/50 backdrop-blur-sm">
+                  <Settings className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" className="bg-white/50 backdrop-blur-sm relative">
+                  <Bell className="h-4 w-4" />
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-8 space-y-8">
+          {/* View Toggle and Quick Stats */}
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <Button
+                variant={selectedView === 'overview' ? 'default' : 'outline'}
+                onClick={() => setSelectedView('overview')}
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white"
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Overview
+              </Button>
+              <Button
+                variant={selectedView === 'detailed' ? 'default' : 'outline'}
+                onClick={() => setSelectedView('detailed')}
+                className="bg-white/50 backdrop-blur-sm border-slate-200 hover:bg-white/80"
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Detailed View
+              </Button>
+            </div>
+
+            {/* Quick Stats Pills */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 px-4 py-2 bg-white/50 backdrop-blur-sm rounded-full border border-slate-200">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <span className="text-sm font-medium">{stats.present} Present</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-white/50 backdrop-blur-sm rounded-full border border-slate-200">
+                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                <span className="text-sm font-medium">{stats.absent} Absent</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-white/50 backdrop-blur-sm rounded-full border border-slate-200">
+                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                <span className="text-sm font-medium">{stats.late} Late</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Advanced Filters */}
+          <Card className="border-none shadow-xl bg-white/70 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30">
+                    <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <CardTitle className="text-xl">Smart Filters</CardTitle>
+                </div>
+                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700">
+                  Reset All
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Search Students</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Name or Roll No..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start bg-white/50 backdrop-blur-sm border-slate-200 hover:bg-white/80">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {date ? format(date, 'PPP') : 'Select date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={date}
+                        onSelect={setDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Grade</Label>
+                  <Select value={grade} onValueChange={setGrade}>
+                    <SelectTrigger className="bg-white/50 backdrop-blur-sm border-slate-200">
+                      <SelectValue placeholder="All Grades" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Grades</SelectItem>
+                      {grades.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Section</Label>
+                  <Select value={section} onValueChange={setSection}>
+                    <SelectTrigger className="bg-white/50 backdrop-blur-sm border-slate-200">
+                      <SelectValue placeholder="All Sections" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sections</SelectItem>
+                      {sections.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Quick Actions</Label>
+                  <Button 
+                    onClick={handleMarkAllPresent}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white"
+                  >
+                    Mark All Present
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Premium Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="border-none shadow-2xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
+              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+              <CardHeader className="relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+                    <UserCheck className="h-8 w-8" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {getTrendIcon(stats.present, Math.floor(stats.present * 0.9))}
+                    <span className="text-sm">+12%</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="relative z-10">
+                <div className="text-4xl font-bold mb-2">{stats.present}</div>
+                <div className="text-emerald-100">Present Today</div>
+                <div className="text-sm text-emerald-200 mt-2">
+                  {((stats.present / stats.total) * 100).toFixed(1)}% of total
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-2xl bg-gradient-to-br from-rose-400 to-red-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
+              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+              <CardHeader className="relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+                    <UserX className="h-8 w-8" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {getTrendIcon(stats.absent, Math.floor(stats.absent * 1.1))}
+                    <span className="text-sm">-8%</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="relative z-10">
+                <div className="text-4xl font-bold mb-2">{stats.absent}</div>
+                <div className="text-rose-100">Absent Today</div>
+                <div className="text-sm text-rose-200 mt-2">
+                  {((stats.absent / stats.total) * 100).toFixed(1)}% of total
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
+              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+              <CardHeader className="relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+                    <Clock className="h-8 w-8" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {getTrendIcon(stats.late, Math.floor(stats.late * 0.8))}
+                    <span className="text-sm">+5%</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="relative z-10">
+                <div className="text-4xl font-bold mb-2">{stats.late}</div>
+                <div className="text-amber-100">Late Today</div>
+                <div className="text-sm text-amber-200 mt-2">
+                  {((stats.late / stats.total) * 100).toFixed(1)}% of total
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
+              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+              <CardHeader className="relative z-10">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
+                    <Activity className="h-8 w-8" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {getTrendIcon(stats.rate, 85)}
+                    <span className="text-sm">+2.3%</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="relative z-10">
+                <div className="text-4xl font-bold mb-2">{stats.rate.toFixed(1)}%</div>
+                <div className="text-indigo-100">Attendance Rate</div>
+                <div className="text-sm text-indigo-200 mt-2">
+                  {stats.total} total students
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Weekly Trend Chart */}
+          <Card className="border-none shadow-xl bg-white/70 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30">
+                    <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <CardTitle className="text-xl">Weekly Attendance Trend</CardTitle>
+                </div>
+                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700">
+                  View Details
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {trendData.length > 0 ? (
+                  <div className="grid grid-cols-7 gap-2">
+                    {trendData.map((day, index) => (
+                    <div key={index} className="text-center space-y-2">
+                      <div className="text-xs font-medium text-slate-500">
+                        {format(day.date, 'EEE')}
+                      </div>
+                      <div className="relative h-32 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden group hover:scale-105 transition-all duration-300">
+                        <div 
+                          className={cn(
+                            "absolute bottom-0 w-full bg-gradient-to-t transition-all duration-500",
+                            day.rate >= 90 ? "from-emerald-500 to-emerald-400" :
+                            day.rate >= 80 ? "from-blue-500 to-blue-400" :
+                            day.rate >= 70 ? "from-amber-500 to-amber-400" :
+                            "from-rose-500 to-rose-400"
+                          )}
+                          style={{ height: `${day.rate}%` }}
+                        >
+                          <div className="absolute top-2 left-0 right-0 text-center">
+                            <span className="text-xs font-bold text-white">
+                              {day.rate.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        {isToday(day.date) && (
+                          <div className="absolute top-0 right-0 w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></div>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400">
+                        {day.present}/{day.present + day.absent + day.late + day.halfDay}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="animate-pulse text-slate-500">Loading attendance trends...</div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Advanced Attendance Table */}
+          <Card className="border-none shadow-xl bg-white/70 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30">
+                    <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <CardTitle className="text-xl">Student Attendance Details</CardTitle>
+                  <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                    {attendanceData.length} Students
+                  </Badge>
+                </div>
+                <Button 
+                  onClick={handleSaveAttendance}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Attendance
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
+                    <TableRow>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Student</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Grade</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Status</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Check In</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Check Out</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : attendanceData.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center text-slate-500">
+                          No students found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      attendanceData.map((student) => {
+                        const statusConfig = getStatusConfig(student.status)
+                        const StatusIcon = statusConfig.icon
+                        
+                        return (
+                        <TableRow 
+                          key={student.id} 
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors duration-200"
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg",
+                                statusConfig.bgClass
+                              )}>
+                                {student.avatar || student.name.split(' ').map(n => n[0]).join('')}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {student.name}
+                                </div>
+                                <div className="text-sm text-slate-500">
+                                  {student.rollNumber}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-900 dark:text-slate-100">
+                              {student.grade} - {student.section}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={student.status}
+                              onValueChange={(value) => handleStatusChange(student.id, value as StudentAttendance['status'])}
+                            >
+                              <SelectTrigger className={cn(
+                                "w-32 font-medium cursor-pointer pointer-events-auto",
+                                statusConfig.lightBgClass,
+                                statusConfig.textClass,
+                                statusConfig.darkTextClass
+                              )}>
+                                <div className="flex items-center gap-2">
+                                  <StatusIcon className="h-4 w-4" />
+                                  <SelectValue />
+                                </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Present">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                                    Present
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="Absent">
+                                  <div className="flex items-center gap-2">
+                                    <XCircle className="h-4 w-4 text-rose-500" />
+                                    Absent
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="Late">
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-amber-500" />
+                                    Late
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="HalfDay">
+                                  <div className="flex items-center gap-2">
+                                    <Timer className="h-4 w-4 text-purple-500" />
+                                    Half Day
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="Unmarked">
+                                  <div className="flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4 text-slate-500" />
+                                    Unmarked
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-900 dark:text-slate-100">
+                              {student.checkIn || '-'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-900 dark:text-slate-100">
+                              {student.checkOut || '-'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" size="sm" className="h-8 px-3">
+                                <AlertCircle className="h-3 w-3" />
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 px-3">
+                                Message
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </DashboardLayout>
+  )
+}
