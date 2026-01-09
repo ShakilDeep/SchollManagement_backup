@@ -93,6 +93,15 @@ export async function POST(req: Request) {
         // Normalize to start of day to ensure consistency
         const attendanceDate = startOfDay(new Date(date))
 
+        // Get a valid admin user for marking attendance
+        const adminUser = await db.user.findFirst({
+            where: {
+                role: 'SUPER_ADMIN'
+            }
+        })
+
+        const markedBy = adminUser?.id || 'cmk5xc4xt0011vqu49ighb5a6'
+
         for (const item of attendanceData) {
             if (item.status === 'Unmarked') {
                 // Delete existing record if setting to Unmarked
@@ -125,7 +134,7 @@ export async function POST(req: Request) {
                         studentId: item.id,
                         date: attendanceDate,
                         status: item.status,
-                        markedBy: 'SYSTEM',
+                        markedBy,
                     }
                 })
             }

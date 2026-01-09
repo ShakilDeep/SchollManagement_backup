@@ -16,11 +16,7 @@ import {
   Bus,
   Building2,
   MessageSquare,
-  BookOpen,
   ScrollText,
-  Settings,
-  Shield,
-  BarChart3,
   User,
   LogOut,
   GraduationCap,
@@ -79,16 +75,6 @@ const navigation: NavSection[] = [
     title: 'ACADEMIC',
     items: [
       { title: 'Curriculum', href: '/dashboard/curriculum', icon: ScrollText, gradient: 'from-fuchsia-500 to-pink-500' },
-      { title: 'LMS', href: '/dashboard/lms', icon: BookOpen, gradient: 'from-teal-500 to-emerald-500' },
-      { title: 'Behavior', href: '/dashboard/behavior', icon: GraduationCap, gradient: 'from-sky-500 to-blue-500' },
-    ]
-  },
-  {
-    title: 'SYSTEM',
-    items: [
-      { title: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, gradient: 'from-indigo-500 to-violet-500' },
-      { title: 'Settings', href: '/dashboard/settings', icon: Settings, gradient: 'from-gray-500 to-zinc-500' },
-      { title: 'Security', href: '/dashboard/security', icon: Shield, gradient: 'from-red-500 to-rose-500' },
     ]
   }
 ]

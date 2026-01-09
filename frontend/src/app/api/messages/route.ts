@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,7 +29,7 @@ export async function GET(request: NextRequest) {
       where.isRead = isRead === 'true'
     }
 
-    const messages = await prisma.message.findMany({
+    const messages = await db.message.findMany({
       where,
       include: {
         sender: {
@@ -75,10 +73,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const message = await prisma.message.create({
+    let actualReceiverId = receiverId
+
+    if (receiverId.includes('@')) {
+      const receiver = await db.user.findUnique({
+        where: { email: receiverId },
+        select: { id: true }
+      })
+      if (!receiver) {
+        console.error('Recipient not found:', receiverId)
+        return NextResponse.json(
+          { error: 'Recipient not found' },
+          { status: 404 }
+        )
+      }
+      actualReceiverId = receiver.id
+    }
+
+    const sender = await db.user.findUnique({
+      where: { id: senderId },
+      select: { id: true }
+    })
+
+    if (!sender) {
+      console.error('Sender not found:', senderId)
+      return NextResponse.json(
+        { error: 'Sender not found' },
+        { status: 404 }
+      )
+    }
+
+    const message = await db.message.create({
       data: {
         senderId,
-        receiverId,
+        receiverId: actualReceiverId,
         subject,
         content,
         type: type || 'Direct',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -147,17 +147,7 @@ export default function HostelPage() {
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchHostels()
-    fetchRooms()
-    fetchAllocations()
-  }, [])
-
-  useEffect(() => {
-    calculateStats()
-  }, [hostels, rooms, allocations])
-
-  const fetchHostels = async () => {
+  const fetchHostels = useCallback(async () => {
     try {
       const response = await fetch('/api/hostels')
       const data = await response.json()
@@ -167,9 +157,9 @@ export default function HostelPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchRooms = async () => {
+  const fetchRooms = useCallback(async () => {
     try {
       const response = await fetch('/api/hostels/rooms')
       const data = await response.json()
@@ -177,9 +167,9 @@ export default function HostelPage() {
     } catch (error) {
       console.error('Error fetching rooms:', error)
     }
-  }
+  }, [])
 
-  const fetchAllocations = async () => {
+  const fetchAllocations = useCallback(async () => {
     try {
       const response = await fetch('/api/hostels/allocations')
       const data = await response.json()
@@ -187,9 +177,15 @@ export default function HostelPage() {
     } catch (error) {
       console.error('Error fetching allocations:', error)
     }
-  }
+  }, [])
 
-  const calculateStats = () => {
+  useEffect(() => {
+    fetchHostels()
+    fetchRooms()
+    fetchAllocations()
+  }, [fetchHostels, fetchRooms, fetchAllocations])
+
+  const calculateStats = useCallback(() => {
     const totalHostels = hostels.length
     const totalRooms = rooms.length
     const totalCapacity = hostels.reduce((acc, h) => acc + h.capacity, 0)
@@ -202,7 +198,7 @@ export default function HostelPage() {
     const availableRooms = rooms.filter(r => r.currentOccupancy < r.capacity).length
     const pendingFees = allocations.filter(a => !a.fees && a.status === 'Active').length
 
-    setStats({
+    return {
       totalHostels,
       totalRooms,
       totalCapacity,
@@ -214,10 +210,15 @@ export default function HostelPage() {
       monthlyRevenue,
       availableRooms,
       pendingFees,
-    })
-  }
+    }
+  }, [hostels, rooms, allocations])
 
-  const handleAddHostel = async (e: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    const calculatedStats = calculateStats()
+    setStats(calculatedStats)
+  }, [calculateStats])
+
+  const handleAddHostel = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const data = {
@@ -236,13 +237,13 @@ export default function HostelPage() {
         body: JSON.stringify(data),
       })
       setIsAddHostelOpen(false)
-      fetchHostels()
+      await fetchHostels()
     } catch (error) {
       console.error('Error adding hostel:', error)
     }
-  }
+  }, [fetchHostels])
 
-  const handleAddRoom = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddRoom = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const data = {
@@ -261,14 +262,14 @@ export default function HostelPage() {
         body: JSON.stringify(data),
       })
       setIsAddRoomOpen(false)
-      fetchRooms()
-      fetchHostels()
+      await fetchRooms()
+      await fetchHostels()
     } catch (error) {
       console.error('Error adding room:', error)
     }
-  }
+  }, [fetchRooms, fetchHostels])
 
-  const handleAddAllocation = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddAllocation = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const data = {
@@ -286,15 +287,15 @@ export default function HostelPage() {
         body: JSON.stringify(data),
       })
       setIsAddAllocationOpen(false)
-      fetchAllocations()
-      fetchRooms()
-      fetchHostels()
+      await fetchAllocations()
+      await fetchRooms()
+      await fetchHostels()
     } catch (error) {
       console.error('Error adding allocation:', error)
     }
-  }
+  }, [fetchAllocations, fetchRooms, fetchHostels])
 
-  const handleCheckout = async (allocationId: string) => {
+  const handleCheckout = useCallback(async (allocationId: string) => {
     try {
       const allocation = allocations.find(a => a.id === allocationId)
       if (!allocation) return
@@ -306,45 +307,45 @@ export default function HostelPage() {
       })
 
       setIsCheckoutDialogOpen(false)
-      fetchAllocations()
-      fetchRooms()
-      fetchHostels()
+      await fetchAllocations()
+      await fetchRooms()
+      await fetchHostels()
     } catch (error) {
       console.error('Error checking out student:', error)
     }
-  }
+  }, [allocations, fetchAllocations, fetchRooms, fetchHostels])
 
-  const filteredRooms = rooms.filter(room => {
+  const filteredRooms = useMemo(() => rooms.filter(room => {
     const matchesSearch = room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          room.hostel?.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = typeFilter === 'all' || room.hostel?.type === typeFilter
     return matchesSearch && matchesType
-  })
+  }), [rooms, searchTerm, typeFilter])
 
-  const filteredAllocations = allocations.filter(allocation => {
+  const filteredAllocations = useMemo(() => allocations.filter(allocation => {
     const matchesSearch = allocation.student?.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          allocation.student?.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          allocation.student?.rollNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          allocation.room?.roomNumber.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || allocation.status === statusFilter
     return matchesSearch && matchesStatus
-  })
+  }), [allocations, searchTerm, statusFilter])
 
-  const getOccupancyColor = (current: number, total: number) => {
+  const getOccupancyColor = useCallback((current: number, total: number) => {
     const percentage = (current / total) * 100
     if (percentage >= 90) return 'bg-red-500'
     if (percentage >= 70) return 'bg-amber-500'
     return 'bg-emerald-500'
-  }
+  }, [])
 
-  const getHostelTypeColor = (type: string) => {
+  const getHostelTypeColor = useCallback((type: string) => {
     switch (type) {
       case 'Boys': return 'from-blue-500 to-blue-600'
       case 'Girls': return 'from-pink-500 to-pink-600'
       case 'Staff': return 'from-purple-500 to-purple-600'
       default: return 'from-slate-500 to-slate-600'
     }
-  }
+  }, [])
 
   if (loading) {
     return (

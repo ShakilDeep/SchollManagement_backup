@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch exam results
-    const results = await prisma.examResult.findMany({
+    const results = await db.examResult.findMany({
       where: whereConditions,
       include: {
         student: {
@@ -155,7 +153,7 @@ export async function POST(request: NextRequest) {
     // Create exam results
     const createdResults = await Promise.all(
       results.map((result: any) =>
-        prisma.examResult.create({
+        db.examResult.create({
           data: {
             studentId: result.studentId,
             examPaperId,
@@ -169,13 +167,13 @@ export async function POST(request: NextRequest) {
     )
 
     // Calculate and update ranks
-    const allResults = await prisma.examResult.findMany({
+    const allResults = await db.examResult.findMany({
       where: { examPaperId },
       orderBy: { percentage: 'desc' }
     })
 
     for (let i = 0; i < allResults.length; i++) {
-      await prisma.examResult.update({
+      await db.examResult.update({
         where: { id: allResults[i].id },
         data: { rank: i + 1 }
       })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Plus, Search, Filter, MapPin, Users, AlertCircle, Activity, Clock, TrendingUp, ArrowUpRight, ArrowDownRight, Zap, Fuel, Wrench, Route, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -190,7 +190,7 @@ export default function TransportPage() {
     setAllocations(mockAllocations)
   }, [])
 
-  const stats = {
+  const stats = useMemo(() => ({
     totalVehicles: vehicles.length,
     activeVehicles: vehicles.filter(v => v.status === 'active').length,
     maintenanceVehicles: vehicles.filter(v => v.status === 'maintenance').length,
@@ -198,9 +198,9 @@ export default function TransportPage() {
     averageCapacity: vehicles.length > 0 
       ? Math.round(vehicles.reduce((sum, v) => sum + (v.currentLoad / v.capacity * 100), 0) / vehicles.length)
       : 0
-  }
+  }), [vehicles, allocations])
 
-  const filteredVehicles = vehicles.filter(vehicle => {
+  const filteredVehicles = useMemo(() => vehicles.filter(vehicle => {
     const matchesSearch = 
       vehicle.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       vehicle.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -209,37 +209,37 @@ export default function TransportPage() {
     const matchesStatus = selectedStatus === 'all' || vehicle.status === selectedStatus
     
     return matchesSearch && matchesStatus
-  })
+  }), [vehicles, searchTerm, selectedStatus])
 
-  const handleViewDetails = (vehicle: Vehicle) => {
+  const handleViewDetails = useCallback((vehicle: Vehicle) => {
     setSelectedVehicle(vehicle)
     setIsViewDialogOpen(true)
-  }
+  }, [])
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'active': return 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
       case 'maintenance': return 'bg-amber-500/10 text-amber-700 border-amber-500/20'
       case 'inactive': return 'bg-slate-500/10 text-slate-700 border-slate-500/20'
       default: return 'bg-slate-500/10 text-slate-700 border-slate-500/20'
     }
-  }
+  }, [])
 
-  const getFuelColor = (level: number) => {
+  const getFuelColor = useCallback((level: number) => {
     if (level > 50) return 'text-emerald-600'
     if (level > 25) return 'text-amber-600'
     return 'text-rose-600'
-  }
+  }, [])
 
-  const getLoadPercentage = (vehicle: Vehicle) => {
+  const getLoadPercentage = useCallback((vehicle: Vehicle) => {
     return Math.round((vehicle.currentLoad / vehicle.capacity) * 100)
-  }
+  }, [])
 
-  const getLoadColor = (percentage: number) => {
+  const getLoadColor = useCallback((percentage: number) => {
     if (percentage >= 90) return 'bg-rose-500'
     if (percentage >= 70) return 'bg-amber-500'
     return 'bg-emerald-500'
-  }
+  }, [])
 
   return (
     <DashboardLayout>

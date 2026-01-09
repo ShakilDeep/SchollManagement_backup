@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const lesson = await prisma.lesson.findUnique({
+    const lesson = await db.lesson.findUnique({
       where: { id: params.id },
       include: {
         curriculum: true,
@@ -41,7 +39,7 @@ export async function PUT(
   try {
     const body = await request.json()
 
-    const lesson = await prisma.lesson.update({
+    const lesson = await db.lesson.update({
       where: { id: params.id },
       data: {
         curriculumId: body.curriculumId,
@@ -79,7 +77,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.lesson.delete({
+    await db.lesson.delete({
       where: { id: params.id }
     })
 

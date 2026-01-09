@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,20 +13,63 @@ export async function GET(request: NextRequest) {
     if (gradeId) where.gradeId = gradeId
     if (academicYearId) where.academicYearId = academicYearId
 
-    const curriculums = await prisma.curriculum.findMany({
+    const curriculums = await db.curriculum.findMany({
       where,
-      include: {
-        subject: true,
-        grade: true,
-        academicYear: true,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        objectives: true,
+        topics: true,
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            color: true
+          }
+        },
+        grade: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
         lessons: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            date: true,
+            duration: true,
+            status: true,
             teacher: {
-              include: {
-                user: true
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true
+                  }
+                }
               }
             },
-            subject: true
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                color: true
+              }
+            }
           },
           orderBy: {
             date: 'asc'
@@ -51,7 +92,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const curriculum = await prisma.curriculum.create({
+    const curriculum = await db.curriculum.create({
       data: {
         name: body.name,
         subjectId: body.subjectId,
@@ -61,10 +102,32 @@ export async function POST(request: NextRequest) {
         objectives: body.objectives,
         topics: body.topics
       },
-      include: {
-        subject: true,
-        grade: true,
-        academicYear: true
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        objectives: true,
+        topics: true,
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            color: true
+          }
+        },
+        grade: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       }
     })
 

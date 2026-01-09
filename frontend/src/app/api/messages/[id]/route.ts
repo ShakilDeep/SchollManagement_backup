@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const message = await prisma.message.findUnique({
+    const message = await db.message.findUnique({
       where: { id: params.id },
       include: {
         sender: {
@@ -56,7 +54,7 @@ export async function PATCH(
       updateData.readAt = isRead ? new Date() : null
     }
 
-    const message = await prisma.message.update({
+    const message = await db.message.update({
       where: { id: params.id },
       data: updateData,
       include: {
@@ -91,7 +89,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.message.delete({
+    await db.message.delete({
       where: { id: params.id },
     })
 

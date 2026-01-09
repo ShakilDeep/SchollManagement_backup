@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +9,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
 
     // Get current academic year
-    const currentYear = await prisma.academicYear.findFirst({
+    const currentYear = await db.academicYear.findFirst({
       where: { isCurrent: true }
     })
 
@@ -33,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch exams with their papers
-    const exams = await prisma.exam.findMany({
+    const exams = await db.exam.findMany({
       where: whereConditions,
       include: {
         papers: {
@@ -123,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get current academic year
-    const currentYear = await prisma.academicYear.findFirst({
+    const currentYear = await db.academicYear.findFirst({
       where: { isCurrent: true }
     })
 
@@ -134,7 +132,7 @@ export async function POST(request: NextRequest) {
     console.log('Creating exam with dates:', { startDate, endDate, start, end })
 
     // Create exam
-    const exam = await prisma.exam.create({
+    const exam = await db.exam.create({
       data: {
         name,
         type,
@@ -149,7 +147,7 @@ export async function POST(request: NextRequest) {
     if (papers && papers.length > 0) {
       const examPapers = await Promise.all(
         papers.map((paper: any) =>
-          prisma.examPaper.create({
+          db.examPaper.create({
             data: {
               examId: exam.id,
               subjectId: paper.subjectId,

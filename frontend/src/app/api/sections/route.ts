@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
     // Fetch all grades with their sections
-    const grades = await prisma.grade.findMany({
+    const grades = await db.grade.findMany({
       include: {
         sections: {
           select: {
@@ -29,7 +27,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Fetch current academic year
-    const currentAcademicYear = await prisma.academicYear.findFirst({
+    const currentAcademicYear = await db.academicYear.findFirst({
       where: {
         isCurrent: true
       },
@@ -72,7 +70,5 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to fetch grades and sections' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

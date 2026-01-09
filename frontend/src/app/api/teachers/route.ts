@@ -1,11 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { NextResponse } from 'next/server'
+import { db } from '@/lib/db'
 
 export async function GET() {
   try {
-    const teachers = await prisma.teacher.findMany({
+    const teachers = await db.teacher.findMany({
       include: {
         user: true
       },

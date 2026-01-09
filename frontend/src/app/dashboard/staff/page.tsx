@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -110,7 +110,7 @@ export default function StaffPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const fetchStaff = async () => {
+  const fetchStaff = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -126,30 +126,30 @@ export default function StaffPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchStaff()
-  }, [])
+  }, [fetchStaff])
 
-  const filteredStaff = staff.filter((member) => {
+  const filteredStaff = useMemo(() => staff.filter((member) => {
     const matchesSearch =
       member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = typeFilter === 'all' || member.type === typeFilter
     const matchesDept = departmentFilter === 'all' || member.department === departmentFilter
     return matchesSearch && matchesType && matchesDept
-  })
+  }), [staff, searchTerm, typeFilter, departmentFilter])
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: staff.length,
     teachers: staff.filter((s) => s.type === 'Teacher').length,
     staff: staff.filter((s) => s.type === 'Staff').length,
     active: staff.filter((s) => s.status === 'Active').length,
     onLeave: staff.filter((s) => s.status === 'On Leave').length
-  }
+  }), [staff])
 
-  const handleViewStaff = async (staffMember: Staff) => {
+  const handleViewStaff = useCallback(async (staffMember: Staff) => {
     try {
       setSelectedStaff(staffMember)
       const response = await fetch(`/api/staff/${staffMember.id}`)
@@ -162,9 +162,9 @@ export default function StaffPage() {
     } catch (err) {
       console.error('Error fetching staff details:', err)
     }
-  }
+  }, [])
 
-  const handleEditStaff = async (staffMember: Staff) => {
+  const handleEditStaff = useCallback(async (staffMember: Staff) => {
     try {
       setSelectedStaff(staffMember)
       const response = await fetch(`/api/staff/${staffMember.id}`)
@@ -192,33 +192,33 @@ export default function StaffPage() {
     } catch (err) {
       console.error('Error fetching staff details:', err)
     }
-  }
+  }, [])
 
-  const handleDeleteClick = (staffMember: Staff) => {
+  const handleDeleteClick = useCallback((staffMember: Staff) => {
     setSelectedStaff(staffMember)
     setIsDeleteDialogOpen(true)
-  }
+  }, [])
 
-  const handleCloseViewDialog = () => {
+  const handleCloseViewDialog = useCallback(() => {
     setIsViewDialogOpen(false)
     setSelectedStaff(null)
     setSelectedStaffDetails(null)
-  }
+  }, [])
 
-  const handleCloseEditDialog = () => {
+  const handleCloseEditDialog = useCallback(() => {
     setIsEditDialogOpen(false)
     setSelectedStaff(null)
     setSelectedStaffDetails(null)
     setSubmitError(null)
-  }
+  }, [])
 
-  const handleCloseDeleteDialog = () => {
+  const handleCloseDeleteDialog = useCallback(() => {
     setIsDeleteDialogOpen(false)
     setSelectedStaff(null)
     setSubmitError(null)
-  }
+  }, [])
 
-  const resetAddForm = () => {
+  const resetAddForm = useCallback(() => {
     setFormData({
       firstName: '',
       lastName: '',
@@ -235,18 +235,17 @@ export default function StaffPage() {
       salary: ''
     })
     setSubmitError(null)
-  }
+  }, [])
 
-  const handleCloseAddDialog = () => {
+  const handleCloseAddDialog = useCallback(() => {
     setIsAddDialogOpen(false)
     resetAddForm()
-  }
+  }, [resetAddForm])
 
-  const handleAddStaff = async (e: React.FormEvent) => {
+  const handleAddStaff = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     setSubmitError(null)
-
     try {
       const response = await fetch('/api/staff', {
         method: 'POST',
@@ -268,9 +267,9 @@ export default function StaffPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [formData, fetchStaff, handleCloseAddDialog])
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
+  const handleEditSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedStaff) return
 
@@ -301,9 +300,9 @@ export default function StaffPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [selectedStaff, formData, selectedStaffDetails, fetchStaff, handleCloseEditDialog])
 
-  const handleDeleteStaff = async () => {
+  const handleDeleteStaff = useCallback(async () => {
     if (!selectedStaff) return
 
     setIsSubmitting(true)
@@ -326,7 +325,7 @@ export default function StaffPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [selectedStaff, fetchStaff, handleCloseDeleteDialog])
 
   if (loading) {
     return (

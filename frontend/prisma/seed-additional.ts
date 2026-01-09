@@ -74,6 +74,16 @@ async function seedAdditionalData() {
       return
     }
 
+    // Get a valid user to mark attendance
+    const markerUser = await prisma.user.findFirst({
+      where: { role: { in: ['ADMIN', 'TEACHER'] } },
+    })
+
+    if (!markerUser) {
+      console.log('No admin/teacher user found, skipping attendance seeding')
+      return
+    }
+
     // 5. Create Attendance Records for today
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -108,7 +118,7 @@ async function seedAdditionalData() {
           status,
           checkInTime: status === 'Present' ? new Date(today.getTime() + 8 * 60 * 60 * 1000) : null,
           checkOutTime: status === 'Present' ? new Date(today.getTime() + 15 * 60 * 60 * 1000) : null,
-          markedBy: 'system',
+          markedBy: markerUser.id,
         },
       })
     }

@@ -7,6 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog'
+import {
   Users,
   GraduationCap,
   ClipboardCheck,
@@ -19,7 +27,12 @@ import {
   ArrowUpRight,
   FileText,
   Calendar,
-  Truck
+  Truck,
+  Brain,
+  ShieldAlert,
+  Lightbulb,
+  RefreshCw,
+  ChevronRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -51,9 +64,33 @@ interface DashboardData {
   }>
 }
 
+interface AIPredictions {
+  enrollmentTrends: {
+    nextMonth: number
+    nextQuarter: number
+    nextYear: number
+    trend: 'increasing' | 'stable' | 'decreasing'
+    confidence: number
+  }
+  dropoutRisk: {
+    highRiskStudents: number
+    mediumRiskStudents: number
+    lowRiskStudents: number
+    riskFactors: string[]
+  }
+  resourceOptimization: {
+    teacherAllocation: string[]
+    classroomUtilization: string[]
+    resourceRecommendations: string[]
+  }
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
+  const [aiPredictions, setAiPredictions] = useState<AIPredictions | null>(null)
   const [loading, setLoading] = useState(true)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [showRecommendationsDialog, setShowRecommendationsDialog] = useState(false)
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -69,8 +106,44 @@ export default function DashboardPage() {
       }
     }
 
+    const fetchAIPredictions = async () => {
+      setAiLoading(true)
+      try {
+        const res = await fetch('/api/ai/dashboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        if (!res.ok) throw new Error('Failed to fetch AI predictions')
+        const aiData = await res.json()
+        setAiPredictions(aiData.data)
+      } catch (error) {
+        console.error('Error fetching AI predictions:', error)
+      } finally {
+        setAiLoading(false)
+      }
+    }
+
     fetchDashboardData()
+    fetchAIPredictions()
   }, [])
+
+  const handleRefreshPredictions = async () => {
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/ai/dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceRefresh: true })
+      })
+      if (!res.ok) throw new Error('Failed to refresh AI predictions')
+      const aiData = await res.json()
+      setAiPredictions(aiData.data)
+    } catch (error) {
+      console.error('Error refreshing AI predictions:', error)
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -126,12 +199,6 @@ export default function DashboardPage() {
       description: 'Plan new lesson',
       icon: BookOpen,
       href: '/dashboard/curriculum'
-    },
-    {
-      title: 'View Reports',
-      description: 'Analytics & insights',
-      icon: FileText,
-      href: '/dashboard/analytics'
     }
   ]
 
@@ -220,6 +287,208 @@ export default function DashboardPage() {
               </Card>
             )
           })}
+        </div>
+
+        {/* AI Predictions Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Brain className="h-5 w-5 text-violet-500" />
+              AI-Powered Insights
+            </h2>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefreshPredictions}
+              disabled={aiLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", aiLoading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+
+          {aiLoading ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse"></div>
+              ))}
+            </div>
+          ) : aiPredictions ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {/* Enrollment Trends */}
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="p-2 bg-violet-100 text-violet-600 rounded-lg">
+                      <TrendingUp className="h-4 w-4" />
+                    </div>
+                    Enrollment Forecast
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                        +{aiPredictions.enrollmentTrends.nextMonth}
+                      </p>
+                      <p className="text-xs text-slate-500">Next Month</p>
+                    </div>
+                    <Badge className={cn(
+                      "rounded-full",
+                      aiPredictions.enrollmentTrends.trend === 'increasing' ? "bg-emerald-100 text-emerald-700" :
+                      aiPredictions.enrollmentTrends.trend === 'decreasing' ? "bg-rose-100 text-rose-700" :
+                      "bg-slate-100 text-slate-700"
+                    )}>
+                      {aiPredictions.enrollmentTrends.trend}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Q2 Projection</span>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        {aiPredictions.enrollmentTrends.nextQuarter}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Yearly Forecast</span>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        {aiPredictions.enrollmentTrends.nextYear}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <ShieldAlert className="h-3 w-3" />
+                    <span>Confidence: {(aiPredictions.enrollmentTrends.confidence * 100).toFixed(0)}%</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Dropout Risk */}
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="p-2 bg-rose-100 text-rose-600 rounded-lg">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                    Dropout Risk Analysis
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-500">High Risk</span>
+                        <span className="font-medium text-rose-600">{aiPredictions.dropoutRisk.highRiskStudents}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-rose-500 rounded-full transition-all duration-500"
+                          style={{ width: `${(aiPredictions.dropoutRisk.highRiskStudents / Math.max(1, aiPredictions.dropoutRisk.highRiskStudents + aiPredictions.dropoutRisk.mediumRiskStudents + aiPredictions.dropoutRisk.lowRiskStudents)) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-500">Medium Risk</span>
+                        <span className="font-medium text-orange-600">{aiPredictions.dropoutRisk.mediumRiskStudents}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                          style={{ width: `${(aiPredictions.dropoutRisk.mediumRiskStudents / Math.max(1, aiPredictions.dropoutRisk.highRiskStudents + aiPredictions.dropoutRisk.mediumRiskStudents + aiPredictions.dropoutRisk.lowRiskStudents)) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-500">Low Risk</span>
+                        <span className="font-medium text-emerald-600">{aiPredictions.dropoutRisk.lowRiskStudents}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${(aiPredictions.dropoutRisk.lowRiskStudents / Math.max(1, aiPredictions.dropoutRisk.highRiskStudents + aiPredictions.dropoutRisk.mediumRiskStudents + aiPredictions.dropoutRisk.lowRiskStudents)) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <p className="text-xs text-slate-500 mb-2">Key Risk Factors:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {aiPredictions.dropoutRisk.riskFactors.slice(0, 3).map((factor, i) => (
+                        <Badge key={i} variant="secondary" className="text-[10px]">
+                          {factor}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Resource Optimization */}
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                      <Lightbulb className="h-4 w-4" />
+                    </div>
+                    Smart Recommendations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    {aiPredictions.resourceOptimization.resourceRecommendations.slice(0, 3).map((rec, i) => (
+                      <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                        <ChevronRight className="h-4 w-4 text-violet-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{rec}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <Dialog open={showRecommendationsDialog} onOpenChange={setShowRecommendationsDialog}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-full text-xs">
+                        View All Recommendations
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>All Smart Recommendations</DialogTitle>
+                        <DialogDescription>
+                          AI-powered insights based on current school data
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3 mt-4">
+                        {aiPredictions.resourceOptimization.resourceRecommendations.map((rec, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                            <div className="p-1 bg-amber-100 text-amber-600 rounded-full">
+                              <Lightbulb className="h-3 w-3" />
+                            </div>
+                            <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{rec}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <Card className="border-none shadow-md">
+              <CardContent className="p-8 text-center">
+                <Brain className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                <p className="text-slate-500">Unable to load AI predictions</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRefreshPredictions}
+                  className="mt-4"
+                >
+                  Try Again
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="grid gap-8 lg:grid-cols-3">

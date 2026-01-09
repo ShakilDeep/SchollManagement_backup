@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET() {
   try {
-    const subjects = await prisma.subject.findMany({
+    const subjects = await db.subject.findMany({
       orderBy: { name: 'asc' }
     })
     return NextResponse.json(subjects)

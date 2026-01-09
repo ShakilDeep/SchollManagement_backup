@@ -118,12 +118,6 @@ export default function DashboardPage() {
       description: 'Plan new lesson',
       icon: BookOpen,
       gradient: 'from-violet-500 to-purple-500'
-    },
-    {
-      title: 'View Reports',
-      description: 'Analytics & insights',
-      icon: Target,
-      gradient: 'from-orange-500 to-red-500'
     }
   ]
 

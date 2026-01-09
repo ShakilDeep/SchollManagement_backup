@@ -1,7 +1,13 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, memo, lazy, Suspense } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
+
+const AttendanceRow = lazy(() => import('./components/attendance-row').then(m => ({ default: m.AttendanceRow })))
+const StatsCard = lazy(() => import('./components/stats-card').then(m => ({ default: m.StatsCard })))
+const AttendanceLoadingSkeleton = lazy(() => import('./components/attendance-loading-skeleton').then(m => ({ default: m.AttendanceLoadingSkeleton })))
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -86,6 +92,53 @@ interface Section {
   gradeId: string
 }
 
+// Utility functions moved outside component for reusability
+const getStatusConfig = (status: string) => {
+  const configs = {
+    Present: {
+      icon: CheckCircle,
+      color: 'emerald',
+      bgClass: 'bg-emerald-500',
+      textClass: 'text-emerald-600',
+      lightBgClass: 'bg-emerald-100',
+      darkTextClass: 'dark:text-emerald-400'
+    },
+    Absent: {
+      icon: XCircle,
+      color: 'rose',
+      bgClass: 'bg-rose-500',
+      textClass: 'text-rose-600',
+      lightBgClass: 'bg-rose-100',
+      darkTextClass: 'dark:text-rose-400'
+    },
+    Late: {
+      icon: Clock,
+      color: 'amber',
+      bgClass: 'bg-amber-500',
+      textClass: 'text-amber-600',
+      lightBgClass: 'bg-amber-100',
+      darkTextClass: 'dark:text-amber-400'
+    },
+    HalfDay: {
+      icon: Timer,
+      color: 'purple',
+      bgClass: 'bg-purple-500',
+      textClass: 'text-purple-600',
+      lightBgClass: 'bg-purple-100',
+      darkTextClass: 'dark:text-purple-400'
+    },
+    Unmarked: {
+      icon: AlertCircle,
+      color: 'slate',
+      bgClass: 'bg-slate-500',
+      textClass: 'text-slate-600',
+      lightBgClass: 'bg-slate-100',
+      darkTextClass: 'dark:text-slate-400'
+    }
+  }
+  return configs[status as keyof typeof configs] || configs.Unmarked
+}
+
 // Force recompile - attendance page component
 export default function AttendancePage() {
   const [date, setDate] = useState<Date | undefined>(new Date())
@@ -93,6 +146,7 @@ export default function AttendancePage() {
   const [section, setSection] = useState<string>('all')
   const [attendanceData, setAttendanceData] = useState<StudentAttendance[]>([])
   const [searchTerm, setSearchTerm] = useState<string>('')
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300)
   const [selectedView, setSelectedView] = useState<'overview' | 'detailed'>('overview')
   const [trendData, setTrendData] = useState<AttendanceTrend[]>([])
   const [currentDate, setCurrentDate] = useState<Date | null>(null)
@@ -112,7 +166,7 @@ export default function AttendancePage() {
   }, [])
 
   // Fetch stats and trends
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (!date) return
     setStatsLoading(true)
     try {
@@ -130,10 +184,10 @@ export default function AttendancePage() {
     } finally {
         setStatsLoading(false)
     }
-  }
+  }, [date])
 
   // Fetch grades
-  const fetchGrades = async () => {
+  const fetchGrades = useCallback(async () => {
     try {
       const res = await fetch('/api/grades')
       const data = await res.json()
@@ -141,10 +195,10 @@ export default function AttendancePage() {
     } catch (error) {
       console.error('Failed to fetch grades', error)
     }
-  }
+  }, [])
 
   // Fetch sections
-  const fetchSections = async (gradeId?: string) => {
+  const fetchSections = useCallback(async (gradeId?: string) => {
     try {
       const url = '/api/sections'
       const res = await fetch(url)
@@ -171,10 +225,10 @@ export default function AttendancePage() {
       console.error('Failed to fetch sections', error)
       setSections([])
     }
-  }
+  }, [])
 
   // Fetch attendance data
-  const fetchAttendance = async () => {
+  const fetchAttendance = useCallback(async () => {
     if (!date) return
     
     setLoading(true)
@@ -183,7 +237,7 @@ export default function AttendancePage() {
       params.append('date', date.toISOString())
       if (grade && grade !== 'all') params.append('gradeId', grade)
       if (section && section !== 'all') params.append('sectionId', section)
-      if (searchTerm) params.append('search', searchTerm)
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
 
       const res = await fetch(`/api/attendance?${params.toString()}`)
       const data = await res.json()
@@ -193,7 +247,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [date, grade, section, debouncedSearchTerm])
 
   // Update sections when grade changes
   useEffect(() => {
@@ -216,21 +270,12 @@ export default function AttendancePage() {
   }, [date, grade, section, searchTerm])
 
   const stats = useMemo(() => {
-    // We can use the fetched trendData for the "today" stats if we want global stats
-    // Or use attendanceData for "filtered" stats.
-    // The previous implementation used attendanceData.
-    // Let's stick to attendanceData for the "Daily Stats" cards to reflect the current filter (e.g. "Grade 9 Attendance")
-    // BUT, if we want global stats, we should use data from `fetchStats`.
-    // Given the UI context "Present Today", it usually means "Whole School" unless filtered.
-    // Let's keep it based on attendanceData for now as it makes the filters interactive.
-    
     const total = attendanceData.length
     const present = attendanceData.filter((s) => s.status === 'Present').length
     const absent = attendanceData.filter((s) => s.status === 'Absent').length
     const late = attendanceData.filter((s) => s.status === 'Late').length
     const halfDay = attendanceData.filter((s) => s.status === 'HalfDay').length
     
-    // Effective present for rate calculation
     const effectivePresent = present + late + halfDay
 
     return {
@@ -243,53 +288,7 @@ export default function AttendancePage() {
     }
   }, [attendanceData])
 
-  const getStatusConfig = (status: string) => {
-    const configs = {
-      Present: {
-        icon: CheckCircle,
-        color: 'emerald',
-        bgClass: 'bg-emerald-500',
-        textClass: 'text-emerald-600',
-        lightBgClass: 'bg-emerald-100',
-        darkTextClass: 'dark:text-emerald-400'
-      },
-      Absent: {
-        icon: XCircle,
-        color: 'rose',
-        bgClass: 'bg-rose-500',
-        textClass: 'text-rose-600',
-        lightBgClass: 'bg-rose-100',
-        darkTextClass: 'dark:text-rose-400'
-      },
-      Late: {
-        icon: Clock,
-        color: 'amber',
-        bgClass: 'bg-amber-500',
-        textClass: 'text-amber-600',
-        lightBgClass: 'bg-amber-100',
-        darkTextClass: 'dark:text-amber-400'
-      },
-      HalfDay: {
-        icon: Timer,
-        color: 'purple',
-        bgClass: 'bg-purple-500',
-        textClass: 'text-purple-600',
-        lightBgClass: 'bg-purple-100',
-        darkTextClass: 'dark:text-purple-400'
-      },
-      Unmarked: {
-        icon: AlertCircle,
-        color: 'slate',
-        bgClass: 'bg-slate-500',
-        textClass: 'text-slate-600',
-        lightBgClass: 'bg-slate-100',
-        darkTextClass: 'dark:text-slate-400'
-      }
-    }
-    return configs[status as keyof typeof configs] || configs.Unmarked
-  }
-
-  const handleStatusChange = (studentId: string, newStatus: StudentAttendance['status']) => {
+  const handleStatusChange = useCallback((studentId: string, newStatus: StudentAttendance['status']) => {
     setAttendanceData(prev =>
       prev.map(student =>
         student.id === studentId
@@ -297,27 +296,27 @@ export default function AttendancePage() {
           : student
       )
     )
-  }
+  }, [])
 
-  const handleMarkAllPresent = () => {
+  const handleMarkAllPresent = useCallback(() => {
     setAttendanceData(prev =>
       prev.map(student => ({ ...student, status: 'Present' }))
     )
-  }
+  }, [])
 
-  const getTrendIcon = (current: number, previous: number) => {
+  const getTrendIcon = useCallback((current: number, previous: number) => {
     if (current > previous) return <TrendingUp className="h-4 w-4 text-emerald-500" />
     if (current < previous) return <TrendingDown className="h-4 w-4 text-rose-500" />
     return <Activity className="h-4 w-4 text-slate-400" />
-  }
+  }, [])
 
-  const getTrendColor = (current: number, previous: number) => {
+  const getTrendColor = useCallback((current: number, previous: number) => {
     if (current > previous) return 'text-emerald-500'
     if (current < previous) return 'text-rose-500'
     return 'text-slate-500'
-  }
+  }, [])
 
-  const handleSaveAttendance = async () => {
+  const handleSaveAttendance = useCallback(async () => {
     if (!date) return
     try {
       await fetch('/api/attendance', {
@@ -328,15 +327,13 @@ export default function AttendancePage() {
           attendanceData: attendanceData.map(s => ({ id: s.id, status: s.status }))
         })
       })
-      // Could add toast here
       alert('Attendance saved successfully')
-      // Refresh stats to reflect changes
       fetchStats()
     } catch (error) {
       console.error('Failed to save attendance', error)
       alert('Failed to save attendance')
     }
-  }
+  }, [date, attendanceData, fetchStats])
 
   return (
     <DashboardLayout>
@@ -446,10 +443,12 @@ export default function AttendancePage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Search Students</Label>
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="search-students">Search Students</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
+                      id="search-students"
+                      name="search-students"
                       type="text"
                       placeholder="Name or Roll No..."
                       value={searchTerm}
@@ -524,93 +523,54 @@ export default function AttendancePage() {
 
           {/* Premium Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card className="border-none shadow-2xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
-              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-              <CardHeader className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-                    <UserCheck className="h-8 w-8" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getTrendIcon(stats.present, Math.floor(stats.present * 0.9))}
-                    <span className="text-sm">+12%</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="text-4xl font-bold mb-2">{stats.present}</div>
-                <div className="text-emerald-100">Present Today</div>
-                <div className="text-sm text-emerald-200 mt-2">
-                  {((stats.present / stats.total) * 100).toFixed(1)}% of total
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-2xl bg-gradient-to-br from-rose-400 to-red-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
-              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-              <CardHeader className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-                    <UserX className="h-8 w-8" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getTrendIcon(stats.absent, Math.floor(stats.absent * 1.1))}
-                    <span className="text-sm">-8%</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="text-4xl font-bold mb-2">{stats.absent}</div>
-                <div className="text-rose-100">Absent Today</div>
-                <div className="text-sm text-rose-200 mt-2">
-                  {((stats.absent / stats.total) * 100).toFixed(1)}% of total
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
-              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-              <CardHeader className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-                    <Clock className="h-8 w-8" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getTrendIcon(stats.late, Math.floor(stats.late * 0.8))}
-                    <span className="text-sm">+5%</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="text-4xl font-bold mb-2">{stats.late}</div>
-                <div className="text-amber-100">Late Today</div>
-                <div className="text-sm text-amber-200 mt-2">
-                  {((stats.late / stats.total) * 100).toFixed(1)}% of total
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-2xl bg-gradient-to-br from-indigo-400 to-purple-600 text-white overflow-hidden group hover:scale-105 transition-all duration-300">
-              <div className="absolute inset-0 bg-white/10 transform translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-              <CardHeader className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-sm">
-                    <Activity className="h-8 w-8" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getTrendIcon(stats.rate, 85)}
-                    <span className="text-sm">+2.3%</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="text-4xl font-bold mb-2">{stats.rate.toFixed(1)}%</div>
-                <div className="text-indigo-100">Attendance Rate</div>
-                <div className="text-sm text-indigo-200 mt-2">
-                  {stats.total} total students
-                </div>
-              </CardContent>
-            </Card>
+            <Suspense fallback={<div className="h-40 bg-slate-200 animate-pulse rounded-xl" />}>
+              <StatsCard
+                title="Present Today"
+                value={stats.present}
+                icon={UserCheck}
+                colorClass="bg-emerald-400"
+                bgClass="bg-gradient-to-br from-emerald-400 to-teal-600"
+                trendValue={Math.floor(stats.present * 0.9)}
+                getTrendIcon={getTrendIcon}
+                getTrendColor={getTrendColor}
+              />
+            </Suspense>
+            <Suspense fallback={<div className="h-40 bg-slate-200 animate-pulse rounded-xl" />}>
+              <StatsCard
+                title="Absent Today"
+                value={stats.absent}
+                icon={UserX}
+                colorClass="bg-rose-400"
+                bgClass="bg-gradient-to-br from-rose-400 to-red-600"
+                trendValue={Math.floor(stats.absent * 1.1)}
+                getTrendIcon={getTrendIcon}
+                getTrendColor={getTrendColor}
+              />
+            </Suspense>
+            <Suspense fallback={<div className="h-40 bg-slate-200 animate-pulse rounded-xl" />}>
+              <StatsCard
+                title="Late Today"
+                value={stats.late}
+                icon={Clock}
+                colorClass="bg-amber-400"
+                bgClass="bg-gradient-to-br from-amber-400 to-orange-600"
+                trendValue={Math.floor(stats.late * 0.8)}
+                getTrendIcon={getTrendIcon}
+                getTrendColor={getTrendColor}
+              />
+            </Suspense>
+            <Suspense fallback={<div className="h-40 bg-slate-200 animate-pulse rounded-xl" />}>
+              <StatsCard
+                title="Attendance Rate"
+                value={stats.rate.toFixed(1)}
+                icon={Activity}
+                colorClass="bg-indigo-400"
+                bgClass="bg-gradient-to-br from-indigo-400 to-purple-600"
+                trendValue={85}
+                getTrendIcon={getTrendIcon}
+                getTrendColor={getTrendColor}
+              />
+            </Suspense>
           </div>
 
           {/* Weekly Trend Chart */}
@@ -710,13 +670,9 @@ export default function AttendancePage() {
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
-                          <div className="flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      <Suspense fallback={null}>
+                        <AttendanceLoadingSkeleton />
+                      </Suspense>
                     ) : attendanceData.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="h-24 text-center text-slate-500">
@@ -724,112 +680,16 @@ export default function AttendancePage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      attendanceData.map((student) => {
-                        const statusConfig = getStatusConfig(student.status)
-                        const StatusIcon = statusConfig.icon
-                        
-                        return (
-                        <TableRow 
-                          key={student.id} 
-                          className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors duration-200"
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className={cn(
-                                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg",
-                                statusConfig.bgClass
-                              )}>
-                                {student.avatar || student.name.split(' ').map(n => n[0]).join('')}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {student.name}
-                                </div>
-                                <div className="text-sm text-slate-500">
-                                  {student.rollNumber}
-                                </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium text-slate-900 dark:text-slate-100">
-                              {student.grade} - {student.section}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={student.status}
-                              onValueChange={(value) => handleStatusChange(student.id, value as StudentAttendance['status'])}
-                            >
-                              <SelectTrigger className={cn(
-                                "w-32 font-medium cursor-pointer pointer-events-auto",
-                                statusConfig.lightBgClass,
-                                statusConfig.textClass,
-                                statusConfig.darkTextClass
-                              )}>
-                                <div className="flex items-center gap-2">
-                                  <StatusIcon className="h-4 w-4" />
-                                  <SelectValue />
-                                </div>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Present">
-                                  <div className="flex items-center gap-2">
-                                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                    Present
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Absent">
-                                  <div className="flex items-center gap-2">
-                                    <XCircle className="h-4 w-4 text-rose-500" />
-                                    Absent
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Late">
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-amber-500" />
-                                    Late
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="HalfDay">
-                                  <div className="flex items-center gap-2">
-                                    <Timer className="h-4 w-4 text-purple-500" />
-                                    Half Day
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Unmarked">
-                                  <div className="flex items-center gap-2">
-                                    <AlertCircle className="h-4 w-4 text-slate-500" />
-                                    Unmarked
-                                  </div>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium text-slate-900 dark:text-slate-100">
-                              {student.checkIn || '-'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium text-slate-900 dark:text-slate-100">
-                              {student.checkOut || '-'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" className="h-8 px-3">
-                                <AlertCircle className="h-3 w-3" />
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-8 px-3">
-                                Message
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  )}
+                      attendanceData.map((student) => (
+                        <Suspense key={student.id} fallback={null}>
+                          <AttendanceRow
+                            student={student}
+                            onStatusChange={handleStatusChange}
+                            getStatusConfig={getStatusConfig}
+                          />
+                        </Suspense>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>

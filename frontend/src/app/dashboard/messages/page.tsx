@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
@@ -21,26 +20,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import {
-  MessageSquare,
   Search,
   Send,
-  Trash2,
-  Reply,
-  Forward,
-  MoreVertical,
   Inbox,
   SendHorizontal,
-  AlertCircle,
-  Clock,
-  User,
   Mail,
-  X,
-  Check,
+  Sparkles,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
+
+const MessageListItem = lazy(() => import('./components/message-list-item').then(m => ({ default: m.MessageListItem })))
+const MessageDetail = lazy(() => import('./components/message-detail').then(m => ({ default: m.MessageDetail })))
+const MessageEmptyState = lazy(() => import('./components/message-empty-state').then(m => ({ default: m.MessageEmptyState })))
 
 type Message = {
   id: string
@@ -67,13 +62,58 @@ type Message = {
   }
 }
 
-const CURRENT_USER_ID = 'cmjyq5cnt000tvqbgik92z276'
+const CURRENT_USER_ID = 'cmk5xc4xt0011vqu49ighb5a6'
+
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case 'Urgent':
+      return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
+    case 'High':
+      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800'
+    case 'Normal':
+      return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800'
+    case 'Low':
+      return 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-800'
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
+}
+
+const formatTimestamp = (date: Date) => {
+  const now = new Date()
+  const diff = now.getTime() - new Date(date).getTime()
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+
+  if (hours < 1) {
+    const minutes = Math.floor(diff / (1000 * 60))
+    return minutes < 1 ? 'Just now' : `${minutes}m ago`
+  }
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+  const days = Math.floor(hours / 24)
+  if (days < 7) {
+    return `${days}d ago`
+  }
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+const getInitials = (name: string | null) => {
+  if (!name) return 'U'
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
   const [folder, setFolder] = useState<'inbox' | 'sent'>('inbox')
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300)
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
@@ -83,12 +123,14 @@ export default function MessagesPage() {
     content: '',
     priority: 'Normal',
   })
+  const [aiSuggestion, setAiSuggestion] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
 
   useEffect(() => {
     fetchMessages()
   }, [folder, priorityFilter])
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -109,9 +151,9 @@ export default function MessagesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [folder, priorityFilter])
 
-  const handleSelectMessage = async (message: Message) => {
+  const handleSelectMessage = useCallback(async (message: Message) => {
     setSelectedMessage(message)
     if (!message.isRead && folder === 'inbox') {
       try {
@@ -127,9 +169,9 @@ export default function MessagesPage() {
         console.error('Error marking message as read:', error)
       }
     }
-  }
+  }, [folder])
 
-  const handleDeleteMessage = async (messageId: string) => {
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!confirm('Are you sure you want to delete this message?')) return
 
     try {
@@ -141,10 +183,12 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error deleting message:', error)
     }
-  }
+  }, [selectedMessage])
 
-  const handleSendMessage = async () => {
-    if (!composeForm.to || !composeForm.content) return
+  const handleSendMessage = useCallback(async () => {
+    if (!composeForm.content) return
+    const receiverId = selectedMessage ? selectedMessage.sender.id : composeForm.to
+    if (!receiverId) return
 
     try {
       const response = await fetch('/api/messages', {
@@ -152,8 +196,8 @@ export default function MessagesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           senderId: CURRENT_USER_ID,
-          receiverId: composeForm.to,
-          subject: composeForm.subject,
+          receiverId,
+          subject: composeForm.subject || (selectedMessage ? `Re: ${selectedMessage.subject || ''}` : ''),
           content: composeForm.content,
           type: 'Direct',
           priority: composeForm.priority,
@@ -164,6 +208,7 @@ export default function MessagesPage() {
 
       setIsComposeOpen(false)
       setComposeForm({ to: '', subject: '', content: '', priority: 'Normal' })
+      setAiSuggestion('')
 
       if (folder === 'sent') {
         fetchMessages()
@@ -171,7 +216,37 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Error sending message:', error)
     }
-  }
+  }, [composeForm.to, composeForm.subject, composeForm.content, composeForm.priority, folder, fetchMessages, selectedMessage])
+
+  const handleGetAISuggestion = useCallback(async () => {
+    if (!selectedMessage) return
+
+    setAiLoading(true)
+    try {
+      const response = await fetch('/api/messages/suggest-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageContent: selectedMessage.content,
+          senderName: selectedMessage.sender.name,
+          senderRole: selectedMessage.sender.name ? 'Parent' : 'Student',
+          replyTone: 'professional'
+        }),
+      })
+
+      if (!response.ok) throw new Error('Failed to get AI suggestion')
+
+      const data = await response.json()
+      if (data.success) {
+        setAiSuggestion(data.data.suggestedReply)
+        setComposeForm({ ...composeForm, content: data.data.suggestedReply })
+      }
+    } catch (error) {
+      console.error('Error getting AI suggestion:', error)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [selectedMessage, composeForm])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -217,46 +292,54 @@ export default function MessagesPage() {
       .slice(0, 2)
   }
 
-  const filteredMessages = messages.filter((message) => {
-    if (!searchTerm) return true
-    const search = searchTerm.toLowerCase()
-    return (
-      message.subject?.toLowerCase().includes(search) ||
-      message.content.toLowerCase().includes(search) ||
-      message.sender.name?.toLowerCase().includes(search)
-    )
-  })
+  const filteredMessages = useMemo(() => {
+    return messages.filter((message) => {
+      if (!debouncedSearchTerm) return true
+      const search = debouncedSearchTerm.toLowerCase()
+      return (
+        message.subject?.toLowerCase().includes(search) ||
+        message.content.toLowerCase().includes(search) ||
+        message.sender.name?.toLowerCase().includes(search)
+      )
+    })
+  }, [messages, debouncedSearchTerm])
 
   return (
     <DashboardLayout>
       <div className="flex h-[calc(100vh-5rem)]">
       <div className="w-[35%] border-r border-slate-200 dark:border-slate-700/50 flex flex-col bg-slate-50/50 dark:bg-slate-900/50">
         <div className="p-4 border-b border-slate-200 dark:border-slate-700/50">
-          <div className="flex items-center gap-2 mb-3">
-            <button
-              onClick={() => setFolder('inbox')}
-              className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                folder === 'inbox'
-                  ? 'bg-slate-900 text-white dark:bg-slate-700 dark:text-white'
-                  : 'text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800'
-              )}
-            >
-              <Inbox className="h-4 w-4" />
-              Inbox
-            </button>
-            <button
-              onClick={() => setFolder('sent')}
-              className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                folder === 'sent'
-                  ? 'bg-slate-900 text-white dark:bg-slate-700 dark:text-white'
-                  : 'text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800'
-              )}
-            >
-              <SendHorizontal className="h-4 w-4" />
-              Sent
-            </button>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFolder('inbox')}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                  folder === 'inbox'
+                    ? 'bg-slate-900 text-white dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800'
+                )}
+              >
+                <Inbox className="h-4 w-4" />
+                Inbox
+              </button>
+              <button
+                onClick={() => setFolder('sent')}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                  folder === 'sent'
+                    ? 'bg-slate-900 text-white dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-600 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-800'
+                )}
+              >
+                <SendHorizontal className="h-4 w-4" />
+                Sent
+              </button>
+            </div>
+            <Button size="sm" className="gap-2" onClick={() => setIsComposeOpen(true)}>
+              <Send className="h-4 w-4" />
+              Compose
+            </Button>
           </div>
 
           <div className="relative mb-3">
@@ -301,60 +384,16 @@ export default function MessagesPage() {
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
               {filteredMessages.map((message) => (
-                <button
-                  key={message.id}
-                  onClick={() => handleSelectMessage(message)}
-                  className={cn(
-                    'w-full p-4 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800/50',
-                    selectedMessage?.id === message.id && 'bg-slate-100 dark:bg-slate-800/50',
-                    !message.isRead && 'bg-blue-50/30 dark:bg-blue-950/20'
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-9 w-9 flex-shrink-0">
-                      <AvatarImage src={message.sender.avatar || undefined} />
-                      <AvatarFallback className="text-xs">
-                        {getInitials(message.sender.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <span
-                          className={cn(
-                            'text-sm font-medium truncate',
-                            !message.isRead && 'font-semibold text-slate-900 dark:text-white'
-                          )}
-                        >
-                          {message.sender.name || message.sender.email}
-                        </span>
-                        <span className="text-xs text-slate-400 flex-shrink-0">
-                          {formatTimestamp(message.createdAt)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        {!message.isRead && (
-                          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full flex-shrink-0" />
-                        )}
-                        <span
-                          className={cn(
-                            'text-sm truncate',
-                            !message.isRead ? 'font-medium text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'
-                          )}
-                        >
-                          {message.subject || '(No subject)'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-500 truncate">
-                        {message.content}
-                      </p>
-                      <div className="mt-2">
-                        <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0', getPriorityColor(message.priority))}>
-                          {message.priority}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                </button>
+                <Suspense key={message.id} fallback={<div className="p-4 text-sm text-slate-400">Loading...</div>}>
+                  <MessageListItem
+                    message={message}
+                    isSelected={selectedMessage?.id === message.id}
+                    onClick={handleSelectMessage}
+                    getPriorityColor={getPriorityColor}
+                    formatTimestamp={formatTimestamp}
+                    getInitials={getInitials}
+                  />
+                </Suspense>
               ))}
             </div>
           )}
@@ -363,183 +402,124 @@ export default function MessagesPage() {
 
       <div className="flex-1 flex flex-col bg-white dark:bg-slate-900">
         {selectedMessage ? (
-          <>
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700/50">
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <h1 className="text-xl font-semibold text-slate-900 dark:text-white leading-tight">
-                  {selectedMessage.subject || '(No subject)'}
-                </h1>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={cn('text-xs', getPriorityColor(selectedMessage.priority))}>
-                    {selectedMessage.priority}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {selectedMessage.type}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 mb-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={selectedMessage.sender.avatar || undefined} />
-                  <AvatarFallback className="text-sm">
-                    {getInitials(selectedMessage.sender.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-900 dark:text-white">
-                      {selectedMessage.sender.name || selectedMessage.sender.email}
-                    </span>
-                    {selectedMessage.isRead && (
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Check className="h-3 w-3" />
-                        Read
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-slate-500">{selectedMessage.sender.email}</span>
-                </div>
-                <div className="text-right text-xs text-slate-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {formatTimestamp(selectedMessage.createdAt)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <span>To:</span>
-                <span className="text-slate-700 dark:text-slate-300">
-                  {selectedMessage.receiver.name || selectedMessage.receiver.email}
-                </span>
-              </div>
-            </div>
-
-            <ScrollArea className="flex-1 p-6">
-              <div className="prose prose-slate dark:prose-invert max-w-none">
-                {selectedMessage.content.split('\n').map((paragraph, idx) => (
-                  <p key={idx} className="mb-4 leading-relaxed text-slate-700 dark:text-slate-300">
-                    {paragraph || <br />}
-                  </p>
-                ))}
-              </div>
-            </ScrollArea>
-
-            <div className="p-4 border-t border-slate-200 dark:border-slate-700/50">
-              <div className="flex items-center gap-3">
-                <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="default" size="sm" className="gap-2">
-                      <Reply className="h-4 w-4" />
-                      Reply
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                      <DialogTitle>Reply to message</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">To</label>
-                        <Input
-                          id="reply-to"
-                          name="reply-to"
-                          value={selectedMessage.sender.name || selectedMessage.sender.email}
-                          disabled
-                          className="bg-slate-50 dark:bg-slate-800"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Subject</label>
-                        <Input
-                          id="reply-subject"
-                          name="reply-subject"
-                          defaultValue={`Re: ${selectedMessage.subject || ''}`}
-                          onChange={(e) => setComposeForm({ ...composeForm, subject: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Message</label>
-                        <Textarea
-                          id="reply-content"
-                          name="reply-content"
-                          rows={6}
-                          value={composeForm.content}
-                          onChange={(e) => setComposeForm({ ...composeForm, content: e.target.value })}
-                          placeholder="Write your reply..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Priority</label>
-                        <Select
-                          value={composeForm.priority}
-                          onValueChange={(value) => setComposeForm({ ...composeForm, priority: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Low">Low</SelectItem>
-                            <SelectItem value="Normal">Normal</SelectItem>
-                            <SelectItem value="High">High</SelectItem>
-                            <SelectItem value="Urgent">Urgent</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsComposeOpen(false)}
-                        className="mr-auto"
-                      >
-                        Cancel
-                      </Button>
-                      <Button onClick={handleSendMessage} className="gap-2">
-                        <Send className="h-4 w-4" />
-                        Send Reply
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Forward className="h-4 w-4" />
-                  Forward
-                </Button>
-
-                <div className="flex-1" />
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDeleteMessage(selectedMessage.id)}
-                  className="gap-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </Button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center max-w-md">
-              <MessageSquare className="h-16 w-16 text-slate-200 dark:text-slate-700 mx-auto mb-4" />
-              <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
-                {folder === 'inbox' ? 'No message selected' : 'No sent message selected'}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {folder === 'inbox'
-                  ? 'Select a message from the inbox to view its details'
-                  : 'Select a sent message to view its details'}
-              </p>
-            </div>
-          </div>
-        )}
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8"><div className="text-sm text-slate-400">Loading message...</div></div>}>
+              <MessageDetail
+                message={selectedMessage}
+                onReply={() => setIsComposeOpen(true)}
+                onDelete={() => handleDeleteMessage(selectedMessage.id)}
+                folder={folder}
+                getPriorityColor={getPriorityColor}
+                formatTimestamp={formatTimestamp}
+                getInitials={getInitials}
+              />
+            </Suspense>
+          ) : (
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8"><div className="text-sm text-slate-400">Loading...</div></div>}>
+              <MessageEmptyState folder={folder} />
+            </Suspense>
+          )}
       </div>
     </div>
+
+    <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{selectedMessage ? 'Reply to message' : 'Compose new message'}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">To</label>
+            {selectedMessage ? (
+              <Input
+                id="reply-to"
+                name="reply-to"
+                value={selectedMessage.sender.name || selectedMessage.sender.email}
+                disabled
+                className="bg-slate-50 dark:bg-slate-800"
+              />
+            ) : (
+              <Input
+                id="compose-to"
+                name="compose-to"
+                placeholder="Enter recipient email or name"
+                value={composeForm.to}
+                onChange={(e) => setComposeForm({ ...composeForm, to: e.target.value })}
+              />
+            )}
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Subject</label>
+            <Input
+              id="subject"
+              name="subject"
+              placeholder="Enter subject"
+              value={composeForm.subject}
+              onChange={(e) => setComposeForm({ ...composeForm, subject: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Message</label>
+            <div className="relative">
+              <Textarea
+                id="content"
+                name="content"
+                rows={6}
+                value={composeForm.content}
+                onChange={(e) => setComposeForm({ ...composeForm, content: e.target.value })}
+                placeholder={selectedMessage ? "Write your reply..." : "Write your message..."}
+              />
+              {selectedMessage && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="absolute top-2 right-2 gap-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm"
+                  onClick={handleGetAISuggestion}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  <span className="text-xs">{aiLoading ? 'Generating...' : 'AI Suggest'}</span>
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Priority</label>
+            <Select
+              value={composeForm.priority}
+              onValueChange={(value) => setComposeForm({ ...composeForm, priority: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Low">Low</SelectItem>
+                <SelectItem value="Normal">Normal</SelectItem>
+                <SelectItem value="High">High</SelectItem>
+                <SelectItem value="Urgent">Urgent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setIsComposeOpen(false)}
+            className="mr-auto"
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleSendMessage} className="gap-2">
+            <Send className="h-4 w-4" />
+            {selectedMessage ? 'Send Reply' : 'Send Message'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </DashboardLayout>
   )
 }

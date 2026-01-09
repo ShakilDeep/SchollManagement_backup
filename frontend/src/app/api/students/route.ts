@@ -3,8 +3,41 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const rollNumber = searchParams.get('rollNumber')
+
+    if (rollNumber) {
+      const student = await db.student.findFirst({
+        where: { rollNumber },
+        include: {
+          grade: true,
+          section: true,
+          guardian: true,
+        },
+      })
+
+      if (!student) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
+      }
+
+      return NextResponse.json({
+        id: student.id,
+        rollNumber: student.rollNumber,
+        name: `${student.firstName} ${student.lastName}`,
+        grade: student.grade.name,
+        section: student.section.name,
+        status: student.status,
+        guardian: `${student.guardian.firstName} ${student.guardian.lastName}`,
+        phone: student.phone,
+        admissionDate: student.admissionDate.toISOString().split('T')[0],
+        avatar: student.photo || (student.firstName[0] + student.lastName[0]),
+        email: student.email || '',
+        address: student.address,
+      })
+    }
+
     const students = await db.student.findMany({
       include: {
         grade: true,

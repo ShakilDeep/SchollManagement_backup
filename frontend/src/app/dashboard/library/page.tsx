@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,7 +54,9 @@ import {
   DollarSign,
   Edit,
   Trash2,
-  Eye
+  Eye,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react'
 
 interface Book {
@@ -92,6 +94,35 @@ interface LibraryStats {
   totalValue: number
 }
 
+interface BookRecommendation {
+  bookId: string
+  isbn: string
+  title: string
+  author: string
+  category: string
+  availableCopies: number
+  matchScore: number
+  matchReason: string
+}
+
+interface RecommendationResponse {
+  student: {
+    id: string
+    firstName: string
+    lastName: string
+    grade: string
+    section: string
+    rollNumber: string
+  }
+  recommendations: BookRecommendation[]
+  totalRecommendations: number
+  analysis: {
+    readingLevel: string
+    preferredCategories: string[]
+    readingFrequency: string
+  }
+}
+
 export default function LibraryPage() {
   const [books, setBooks] = useState<Book[]>([])
   const [borrowals, setBorrowals] = useState<Borrowal[]>([])
@@ -111,13 +142,11 @@ export default function LibraryPage() {
     totalValue: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null)
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [selectedStudentId, setSelectedStudentId] = useState('')
 
-  useEffect(() => {
-    fetchBooks()
-    fetchBorrowals()
-  }, [])
-
-  const fetchBooks = async () => {
+  const fetchBooks = useCallback(async () => {
     try {
       const response = await fetch('/api/library/books')
       const data = await response.json()
@@ -128,9 +157,9 @@ export default function LibraryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchBorrowals = async () => {
+  const fetchBorrowals = useCallback(async () => {
     try {
       const response = await fetch('/api/library/borrowals')
       const data = await response.json()
@@ -138,9 +167,51 @@ export default function LibraryPage() {
     } catch (error) {
       console.error('Error fetching borrowals:', error)
     }
-  }
+  }, [])
 
-  const calculateStats = (booksData: Book[]) => {
+  const fetchStudentByRollNumber = useCallback(async (rollNumber: string) => {
+    try {
+      const response = await fetch(`/api/students?rollNumber=${rollNumber}`)
+      if (!response.ok) throw new Error('Student not found')
+      const student = await response.json()
+      return student.id
+    } catch (error) {
+      console.error('Error fetching student:', error)
+      return null
+    }
+  }, [])
+
+  const fetchRecommendations = useCallback(async (rollNumber: string) => {
+    if (!rollNumber) {
+      setRecommendations(null)
+      return
+    }
+
+    setRecommendationsLoading(true)
+    try {
+      const studentId = await fetchStudentByRollNumber(rollNumber)
+      if (!studentId) {
+        setRecommendations(null)
+        return
+      }
+
+      const response = await fetch(`/api/library/book-recommendations?studentId=${studentId}`)
+      if (!response.ok) throw new Error('Failed to fetch recommendations')
+      const data = await response.json()
+      setRecommendations(data)
+    } catch (error) {
+      console.error('Error fetching recommendations:', error)
+    } finally {
+      setRecommendationsLoading(false)
+    }
+  }, [fetchStudentByRollNumber])
+
+  useEffect(() => {
+    fetchBooks()
+    fetchBorrowals()
+  }, [fetchBooks, fetchBorrowals])
+
+  const calculateStats = useCallback((booksData: Book[]) => {
     const totalBooks = booksData.reduce((acc, b) => acc + b.totalCopies, 0)
     const availableBooks = booksData.reduce((acc, b) => acc + b.availableCopies, 0)
     const borrowed = borrowals.filter(b => b.status === 'Borrowed').length
@@ -156,18 +227,18 @@ export default function LibraryPage() {
       returned,
       totalValue,
     })
-  }
+  }, [borrowals])
 
-  const filteredBooks = books.filter((book) => {
+  const filteredBooks = useMemo(() => books.filter((book) => {
     const matchesSearch =
       book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
       book.isbn.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = categoryFilter === 'all' || book.category === categoryFilter
     return matchesSearch && matchesCategory
-  })
+  }), [books, searchTerm, categoryFilter])
 
-  const getAvailabilityBadge = (book: Book) => {
+  const getAvailabilityBadge = useCallback((book: Book) => {
     if (book.availableCopies === 0) {
       return <Badge variant="destructive">Out of Stock</Badge>
     }
@@ -175,33 +246,45 @@ export default function LibraryPage() {
       return <Badge variant="secondary">Low Stock</Badge>
     }
     return <Badge variant="default">Available</Badge>
-  }
+  }, [])
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = useCallback((status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive"> = {
       'Borrowed': 'default',
       'Returned': 'secondary',
       'Overdue': 'destructive'
     }
     return <Badge variant={variants[status]}>{status}</Badge>
-  }
+  }, [])
 
-  const handleViewDetails = (book: Book) => {
+  const handleViewDetails = useCallback((rec: BookRecommendation | Book) => {
+    const book: Book = 'bookId' in rec 
+      ? {
+          id: rec.bookId,
+          isbn: rec.isbn,
+          title: rec.title,
+          author: rec.author,
+          category: rec.category,
+          totalCopies: rec.availableCopies,
+          availableCopies: rec.availableCopies,
+          location: 'Library',
+        }
+      : rec;
     setSelectedBook(book)
     setIsViewDetailsOpen(true)
-  }
+  }, [])
 
-  const handleEditBook = (book: Book) => {
+  const handleEditBook = useCallback((book: Book) => {
     setSelectedBook(book)
     setIsEditBookOpen(true)
-  }
+  }, [])
 
-  const handleDeleteBook = (book: Book) => {
+  const handleDeleteBook = useCallback((book: Book) => {
     setSelectedBook(book)
     setIsDeleteDialogOpen(true)
-  }
+  }, [])
 
-  const confirmDeleteBook = async () => {
+  const confirmDeleteBook = useCallback(async () => {
     if (!selectedBook) return
     try {
       const response = await fetch(`/api/library/books/${selectedBook.id}`, {
@@ -215,15 +298,15 @@ export default function LibraryPage() {
     } catch (error) {
       console.error('Error deleting book:', error)
     }
-  }
+  }, [selectedBook, fetchBooks])
 
-  const availablePercentage = stats.totalBooks > 0 
+  const availablePercentage = useMemo(() => stats.totalBooks > 0 
     ? Math.round((stats.availableBooks / stats.totalBooks) * 100) 
-    : 0
+    : 0, [stats.totalBooks, stats.availableBooks])
 
-  const overduePercentage = stats.borrowed > 0 
+  const overduePercentage = useMemo(() => stats.borrowed > 0 
     ? Math.round((stats.overdue / stats.borrowed) * 100) 
-    : 0
+    : 0, [stats.borrowed, stats.overdue])
 
   return (
     <DashboardLayout>
@@ -509,6 +592,120 @@ export default function LibraryPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader>
+            <div className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-500" />
+                <CardTitle className="text-lg">AI-Powered Book Recommendations</CardTitle>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchRecommendations(selectedStudentId)}
+                disabled={!selectedStudentId || recommendationsLoading}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${recommendationsLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Get personalized book suggestions based on student reading patterns
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter student roll number to get recommendations..."
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={() => fetchRecommendations(selectedStudentId)}
+                  disabled={!selectedStudentId || recommendationsLoading}
+                >
+                  {recommendationsLoading ? 'Loading...' : 'Get Recommendations'}
+                </Button>
+              </div>
+
+              {recommendationsLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-purple-500 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Analyzing reading patterns...</p>
+                  </div>
+                </div>
+              )}
+
+              {recommendations && !recommendationsLoading && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-purple-50/50 rounded-lg">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Books Borrowed</p>
+                      <p className="font-semibold text-purple-700">{recommendations.readingProfile.totalBooksBorrowed}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Reading Frequency</p>
+                      <p className="font-semibold text-purple-700 capitalize">{recommendations.readingProfile.readingFrequency}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Confidence Score</p>
+                      <p className="font-semibold text-purple-700">{recommendations.confidence}%</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                      <BookOpen className="h-4 w-4" />
+                      Recommended Books ({recommendations.recommendations.length})
+                    </h4>
+                    <div className="grid gap-3">
+                      {recommendations.recommendations.map((rec, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 border rounded-lg hover:border-purple-300 transition-colors cursor-pointer"
+                          onClick={() => handleViewDetails(rec)}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h5 className="font-semibold text-sm">{rec.title}</h5>
+                                <Badge variant="outline" className="text-xs">
+                                  {rec.matchScore}% Match
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mb-2">
+                                by {rec.author} • {rec.category}
+                              </p>
+                              <p className="text-xs text-slate-600">{rec.matchReason}</p>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <Badge
+                                variant={rec.availableCopies > 0 ? "default" : "destructive"}
+                                className="text-xs"
+                              >
+                                {rec.availableCopies} Available
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!recommendations && !recommendationsLoading && selectedStudentId && (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  Enter a student ID above to get personalized book recommendations
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

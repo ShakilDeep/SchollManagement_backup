@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +12,7 @@ export async function GET(request: NextRequest) {
     const targetSectionId = sectionId || (await getDefaultSectionId())
     const targetAcademicYearId = academicYearId || (await getCurrentAcademicYearId())
 
-    const timetables = await prisma.timetable.findMany({
+    const timetables = await db.timetable.findMany({
       where: {
         sectionId: targetSectionId,
         academicYearId: targetAcademicYearId
@@ -55,13 +53,11 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to fetch timetable data' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
 async function getDefaultSectionId(): Promise<string> {
-  const section = await prisma.section.findFirst({
+  const section = await db.section.findFirst({
     where: {
       name: 'A',
       grade: {
@@ -73,7 +69,7 @@ async function getDefaultSectionId(): Promise<string> {
 }
 
 async function getCurrentAcademicYearId(): Promise<string> {
-  const academicYear = await prisma.academicYear.findFirst({
+  const academicYear = await db.academicYear.findFirst({
     where: {
       isCurrent: true
     }

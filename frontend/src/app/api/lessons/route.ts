@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +17,7 @@ export async function GET(request: NextRequest) {
     if (teacherId) where.teacherId = teacherId
     if (status) where.status = status
 
-    const lessons = await prisma.lesson.findMany({
+    const lessons = await db.lesson.findMany({
       where,
       include: {
         curriculum: true,
@@ -47,7 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const lesson = await prisma.lesson.create({
+    const lesson = await db.lesson.create({
       data: {
         curriculumId: body.curriculumId,
         subjectId: body.subjectId,

@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar, Clock, BookOpen, Users, AlertTriangle, TrendingUp, Download, Filter, Bell, MapPin, Activity } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import TimetableSkeleton from './components/timetable-skeleton'
+const SubjectCard = lazy(() => import('./components/subject-card'))
 
 interface Period {
   period: number
@@ -31,68 +33,6 @@ interface GradeSection {
   }>
 }
 
-const subjectConfig = {
-  'Mathematics': { icon: '📐', color: 'bg-blue-500', difficulty: 'advanced' as const, type: 'lecture' as const },
-  'Physics': { icon: '⚛️', color: 'bg-purple-500', difficulty: 'advanced' as const, type: 'practical' as const },
-  'Chemistry': { icon: '🧪', color: 'bg-green-500', difficulty: 'intermediate' as const, type: 'lab' as const },
-  'Biology': { icon: '🧬', color: 'bg-emerald-500', difficulty: 'intermediate' as const, type: 'practical' as const },
-  'English': { icon: '📚', color: 'bg-indigo-500', difficulty: 'basic' as const, type: 'seminar' as const },
-  'History': { icon: '📜', color: 'bg-yellow-500', difficulty: 'basic' as const, type: 'lecture' as const },
-  'Geography': { icon: '🌍', color: 'bg-teal-500', difficulty: 'basic' as const, type: 'seminar' as const },
-  'Computer Science': { icon: '💻', color: 'bg-cyan-500', difficulty: 'intermediate' as const, type: 'lab' as const },
-  'Physical Education': { icon: '🏃', color: 'bg-orange-500', difficulty: 'basic' as const, type: 'practical' as const },
-  'Art': { icon: '🎨', color: 'bg-pink-500', difficulty: 'basic' as const, type: 'practical' as const }
-}
-
-const SubjectCard = ({ period, isCurrent }: { period: Period; isCurrent?: boolean }) => {
-  const config = subjectConfig[period.subject as keyof typeof subjectConfig] || {
-    icon: '📖',
-    color: 'bg-gray-500',
-    difficulty: 'basic' as const,
-    type: 'lecture' as const
-  }
-
-  return (
-    <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-105 ${
-      isCurrent ? 'ring-2 ring-blue-500 shadow-lg' : ''
-    } ${period.conflict ? 'border-red-300 bg-red-50' : ''}`}>
-      {isCurrent && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500 animate-pulse"></div>
-      )}
-      
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">{config.icon}</span>
-            <CardTitle className="text-sm font-semibold">{period.subject}</CardTitle>
-          </div>
-          <div className="flex items-center gap-1">
-            {period.conflict && <AlertTriangle className="h-3 w-3 text-red-500" />}
-            <Badge variant="secondary" className="text-xs">
-              {period.type || config.type}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="pt-0 space-y-2">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <Users className="h-3 w-3" />
-          <span>{period.teacher}</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-600">
-          <MapPin className="h-3 w-3" />
-          <span>{period.room}</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-600">
-          <Clock className="h-3 w-3" />
-          <span>{period.time}</span>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function TimetablePage() {
   const [grade, setGrade] = useState('10')
   const [section, setSection] = useState('A')
@@ -106,46 +46,45 @@ export default function TimetablePage() {
   
   const classKey = `${grade}-${section}`
 
-  // Fetch data from database
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      
+      const [sectionsResponse, timetableResponse] = await Promise.all([
+        fetch('/api/sections', { cache: 'force-cache' }),
+        fetch(`/api/timetable?gradeId=${grade}&section=${section}`, { cache: 'no-store' })
+      ])
+      
+      if (sectionsResponse.ok) {
+        const sectionsData = await sectionsResponse.json()
+        setGrades(sectionsData.grades)
         
-        // Fetch grades and sections
-        const sectionsResponse = await fetch('/api/sections')
-        if (sectionsResponse.ok) {
-          const sectionsData = await sectionsResponse.json()
-          setGrades(sectionsData.grades)
-          
-          // Set default grade and section if available
-          if (sectionsData.defaultSelection) {
-            const defaultGrade = sectionsData.grades.find((g: GradeSection) => g.id === sectionsData.defaultSelection.grade)
-            if (defaultGrade) {
-              setGrade(defaultGrade.name.replace('Grade ', ''))
-              const defaultSection = defaultGrade.sections.find((s: any) => s.id === sectionsData.defaultSelection.section)
-              if (defaultSection) {
-                setSection(defaultSection.name)
-              }
+        if (sectionsData.defaultSelection) {
+          const defaultGrade = sectionsData.grades.find((g: GradeSection) => g.id === sectionsData.defaultSelection.grade)
+          if (defaultGrade) {
+            setGrade(defaultGrade.name.replace('Grade ', ''))
+            const defaultSection = defaultGrade.sections.find((s: any) => s.id === sectionsData.defaultSelection.section)
+            if (defaultSection) {
+              setSection(defaultSection.name)
             }
           }
         }
-        
-        // Fetch timetable data
-        const timetableResponse = await fetch(`/api/timetable?gradeId=${grade}&section=${section}`)
-        if (timetableResponse.ok) {
-          const timetableData = await timetableResponse.json()
-          setTimetableData(timetableData)
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      } finally {
-        setLoading(false)
       }
+      
+      if (timetableResponse.ok) {
+        const timetableData = await timetableResponse.json()
+        setTimetableData(timetableData)
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setLoading(false)
     }
-
-    fetchData()
   }, [grade, section])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const statistics = useMemo(() => {
     const totalPeriods = timetableData.length
@@ -180,12 +119,11 @@ export default function TimetablePage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading timetable data...</p>
+      <DashboardLayout>
+        <div className="p-6 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+          <TimetableSkeleton />
         </div>
-      </div>
+      </DashboardLayout>
     )
   }
 
@@ -315,7 +253,11 @@ export default function TimetablePage() {
       {viewType === 'weekly' && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {weeklySchedule.map(({ day, periods }) => (
-            <Card key={day} className={`${day === selectedDay ? 'ring-2 ring-blue-500' : ''}`}>
+            <Card 
+              key={day} 
+              className={`${day === selectedDay ? 'ring-2 ring-blue-500' : ''}`}
+              style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}
+            >
               <CardHeader className="pb-2">
                 <CardTitle className="text-center">{day}</CardTitle>
               </CardHeader>
@@ -323,13 +265,15 @@ export default function TimetablePage() {
                 {periods.length === 0 ? (
                   <p className="text-center text-sm text-muted-foreground py-4">No classes</p>
                 ) : (
-                  periods.map((period, idx) => (
-                    <SubjectCard 
-                      key={`${day}-${idx}`} 
-                      period={period}
-                      isCurrent={currentPeriod?.day === day && currentPeriod?.period === period.period}
-                    />
-                  ))
+                  <Suspense fallback={<div className="animate-pulse bg-slate-200 rounded-lg h-20" />}>
+                    {periods.map((period, idx) => (
+                      <SubjectCard 
+                        key={`${day}-${idx}`} 
+                        period={period}
+                        isCurrent={currentPeriod?.day === day && currentPeriod?.period === period.period}
+                      />
+                    ))}
+                  </Suspense>
                 )}
               </CardContent>
             </Card>
@@ -362,13 +306,15 @@ export default function TimetablePage() {
               <CardTitle>{selectedDay} Schedule</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {weeklySchedule.find(s => s.day === selectedDay)?.periods.map((period, idx) => (
-                <SubjectCard 
-                  key={`${selectedDay}-${idx}`} 
-                  period={period}
-                  isCurrent={currentPeriod?.day === selectedDay && currentPeriod?.period === period.period}
-                />
-              )) || <p className="text-center text-sm text-muted-foreground py-4">No classes</p>}
+              <Suspense fallback={<div className="animate-pulse bg-slate-200 rounded-lg h-20" />}>
+                {weeklySchedule.find(s => s.day === selectedDay)?.periods.map((period, idx) => (
+                  <SubjectCard 
+                    key={`${selectedDay}-${idx}`} 
+                    period={period}
+                    isCurrent={currentPeriod?.day === selectedDay && currentPeriod?.period === period.period}
+                  />
+                )) || <p className="text-center text-sm text-muted-foreground py-4">No classes</p>}
+              </Suspense>
             </CardContent>
           </Card>
         </div>
@@ -401,7 +347,7 @@ export default function TimetablePage() {
                         return (
                           <td key={`${day}-${period}`} className="border border-gray-200 p-2">
                             {currentPeriodData ? (
-                              <div className={`text-xs p-1 rounded ${subjectConfig[currentPeriodData.subject as keyof typeof subjectConfig]?.color || 'bg-gray-200'} text-white`}>
+                              <div className="text-xs p-1 rounded bg-blue-500 text-white">
                                 <div className="font-semibold">{currentPeriodData.subject}</div>
                                 <div>{currentPeriodData.teacher}</div>
                                 <div>{currentPeriodData.room}</div>

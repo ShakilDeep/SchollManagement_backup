@@ -1,27 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { db } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const curriculum = await prisma.curriculum.findUnique({
+    const curriculum = await db.curriculum.findUnique({
       where: { id: params.id },
-      include: {
-        subject: true,
-        grade: true,
-        academicYear: true,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        objectives: true,
+        topics: true,
+        createdAt: true,
+        updatedAt: true,
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            color: true
+          }
+        },
+        grade: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
         lessons: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            date: true,
+            duration: true,
+            status: true,
             teacher: {
-              include: {
-                user: true
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                user: {
+                  select: {
+                    name: true,
+                    email: true
+                  }
+                }
               }
             },
-            subject: true
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                color: true
+              }
+            }
           },
           orderBy: {
             date: 'asc'
@@ -48,7 +91,7 @@ export async function PUT(
   try {
     const body = await request.json()
 
-    const curriculum = await prisma.curriculum.update({
+    const curriculum = await db.curriculum.update({
       where: { id: params.id },
       data: {
         name: body.name,
@@ -59,10 +102,34 @@ export async function PUT(
         objectives: body.objectives,
         topics: body.topics
       },
-      include: {
-        subject: true,
-        grade: true,
-        academicYear: true
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        objectives: true,
+        topics: true,
+        createdAt: true,
+        updatedAt: true,
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            color: true
+          }
+        },
+        grade: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       }
     })
 
@@ -78,7 +145,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.curriculum.delete({
+    await db.curriculum.delete({
       where: { id: params.id }
     })
 

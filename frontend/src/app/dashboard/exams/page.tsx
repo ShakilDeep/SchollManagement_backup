@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
   Dialog,
@@ -157,117 +157,114 @@ export default function ExamsPage() {
   })
   const [activeTab, setActiveTab] = useState('exams')
 
-  // Fetch exams data
-  useEffect(() => {
-    const fetchExams = async () => {
-      try {
-        const response = await fetch('/api/exams')
-        if (!response.ok) {
-          throw new Error('Failed to fetch exams')
-        }
-        const data = await response.json()
-        setExams(data.exams || [])
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch exams')
-      } finally {
-        setLoading(false)
+  const fetchExams = useCallback(async () => {
+    try {
+      const response = await fetch('/api/exams')
+      if (!response.ok) {
+        throw new Error('Failed to fetch exams')
       }
+      const data = await response.json()
+      setExams(data.exams || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch exams')
+    } finally {
+      setLoading(false)
     }
+  }, [])
 
+  useEffect(() => {
     fetchExams()
+  }, [fetchExams])
+
+  const fetchExamResults = useCallback(async () => {
+    try {
+      const response = await fetch('/api/exam-results')
+      if (!response.ok) {
+        throw new Error('Failed to fetch exam results')
+      }
+      const data = await response.json()
+      setExamResults(data.results || [])
+      setStats(data.stats || {
+        average: 0,
+        highest: 0,
+        lowest: 0,
+        passed: 0,
+        failed: 0,
+        total: 0
+      })
+    } catch (err) {
+      console.error('Failed to fetch exam results:', err)
+    }
   }, [])
 
-  // Fetch exam results
   useEffect(() => {
-    const fetchExamResults = async () => {
-      try {
-        const response = await fetch('/api/exam-results')
-        if (!response.ok) {
-          throw new Error('Failed to fetch exam results')
-        }
-        const data = await response.json()
-        setExamResults(data.results || [])
-        setStats(data.stats || {
-          average: 0,
-          highest: 0,
-          lowest: 0,
-          passed: 0,
-          failed: 0,
-          total: 0
-        })
-      } catch (err) {
-        console.error('Failed to fetch exam results:', err)
-      }
-    }
-
     fetchExamResults()
+  }, [fetchExamResults])
+
+  const fetchSubjects = useCallback(async () => {
+    try {
+      setIsLoadingSubjects(true)
+      const response = await fetch('/api/subjects')
+      if (response.ok) {
+        const data = await response.json()
+        setSubjects(data || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch subjects:', err)
+    } finally {
+      setIsLoadingSubjects(false)
+    }
   }, [])
 
-  // Fetch subjects
   useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        setIsLoadingSubjects(true)
-        const response = await fetch('/api/subjects')
-        if (response.ok) {
-          const data = await response.json()
-          setSubjects(data || [])
-        }
-      } catch (err) {
-        console.error('Failed to fetch subjects:', err)
-      } finally {
-        setIsLoadingSubjects(false)
-      }
-    }
-
     fetchSubjects()
-  }, [])
+  }, [fetchSubjects])
 
-  // Fetch grades
-  useEffect(() => {
-    const fetchGrades = async () => {
-      try {
-        setIsLoadingGrades(true)
-        const response = await fetch('/api/grades')
-        if (response.ok) {
-          const data = await response.json()
-          setGrades(data || [])
-        }
-      } catch (err) {
-        console.error('Failed to fetch grades:', err)
-      } finally {
-        setIsLoadingGrades(false)
+  const fetchGrades = useCallback(async () => {
+    try {
+      setIsLoadingGrades(true)
+      const response = await fetch('/api/grades')
+      if (response.ok) {
+        const data = await response.json()
+        setGrades(data || [])
       }
+    } catch (err) {
+      console.error('Failed to fetch grades:', err)
+    } finally {
+      setIsLoadingGrades(false)
     }
-
-    fetchGrades()
   }, [])
 
-  const currentExam = exams.find(e => e.id === selectedExam)
+  useEffect(() => {
+    fetchGrades()
+  }, [fetchGrades])
+
+  const currentExam = useMemo(() => {
+    return exams.find(e => e.id === selectedExam)
+  }, [exams, selectedExam])
 
 
-  // Event handlers
-  const handleViewDetails = (exam: Exam) => {
+  const handleViewDetails = useCallback((exam: Exam) => {
     setSelectedExamForDetails(exam)
     setShowDetailsModal(true)
-  }
+  }, [])
 
-  const handleCloseDetailsModal = () => {
+  const handleCloseDetailsModal = useCallback(() => {
     setShowDetailsModal(false)
     setSelectedExamForDetails(null)
-  }
+  }, [])
 
-  const handleSchedule = (exam: Exam) => {
+  const handleSchedule = useCallback((exam: Exam) => {
     setSelectedExamForDetails(exam)
     setShowScheduleModal(true)
-  }
+  }, [])
 
-  const handleCloseScheduleModal = () => {
+  const handleCloseScheduleModal = useCallback(() => {
     setShowScheduleModal(false)
     setSelectedExamForDetails(null)
-  }
+  }, [])
 
-  const handleCreateExam = () => {
+  const handleCreateExam = useCallback(() => {
     setNewExam({
       name: '',
       type: 'Final',
@@ -276,9 +273,9 @@ export default function ExamsPage() {
       description: ''
     })
     setShowCreateExamModal(true)
-  }
+  }, [])
 
-  const handleCloseCreateExamModal = () => {
+  const handleCloseCreateExamModal = useCallback(() => {
     setShowCreateExamModal(false)
     setNewExam({
       name: '',
@@ -289,13 +286,13 @@ export default function ExamsPage() {
     })
     setExamPapers([])
     setSubmitError(null)
-  }
+  }, [])
 
-  const handleCloseFilterModal = () => {
+  const handleCloseFilterModal = useCallback(() => {
     setShowFilterModal(false)
-  }
+  }, [])
 
-  const handleAddPaper = () => {
+  const handleAddPaper = useCallback(() => {
     setExamPapers([
       ...examPapers,
       {
@@ -309,22 +306,22 @@ export default function ExamsPage() {
         endTime: ''
       }
     ])
-  }
+  }, [examPapers])
 
-  const handleRemovePaper = (index: number) => {
+  const handleRemovePaper = useCallback((index: number) => {
     setExamPapers(examPapers.filter((_, i) => i !== index))
-  }
+  }, [examPapers])
 
-  const handlePaperChange = (index: number, field: string, value: any) => {
+  const handlePaperChange = useCallback((index: number, field: string, value: any) => {
     const updatedPapers = [...examPapers]
     updatedPapers[index] = {
       ...updatedPapers[index],
       [field]: value
     }
     setExamPapers(updatedPapers)
-  }
+  }, [examPapers])
 
-  const handleCreateExamSubmit = async () => {
+  const handleCreateExamSubmit = useCallback(async () => {
     setIsSubmitting(true)
     setSubmitError(null)
 
@@ -370,15 +367,8 @@ export default function ExamsPage() {
 
       const data = await response.json()
       
-      // Refresh exams data
-      const fetchExams = async () => {
-        const response = await fetch('/api/exams')
-        const data = await response.json()
-        setExams(data.exams || [])
-      }
       await fetchExams()
       
-      // Reset form and close modal
       handleCloseCreateExamModal()
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to create exam')
@@ -386,16 +376,14 @@ export default function ExamsPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [newExam, examPapers, fetchExams, handleCloseCreateExamModal])
 
-  const handleExportResults = async () => {
+  const handleExportResults = useCallback(async () => {
     try {
-      // Fetch exam results data
       const response = await fetch('/api/exam-results')
       const data = await response.json()
       
       if (data.results && data.results.length > 0) {
-        // Create CSV content
         const headers = [
           'Student Name',
           'Roll Number',
@@ -431,7 +419,6 @@ export default function ExamsPage() {
           ].join(','))
         ].join('\n')
         
-        // Create blob and download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
         const link = document.createElement('a')
         const url = URL.createObjectURL(blob)
@@ -445,44 +432,48 @@ export default function ExamsPage() {
     } catch (error) {
       console.error('Failed to export results:', error)
     }
-  }
+  }, [])
 
-  const calculateGrade = (percentage: number) => {
+  const calculateGrade = useCallback((percentage: number) => {
     if (percentage >= 90) return 'A'
     if (percentage >= 80) return 'B'
     if (percentage >= 70) return 'C'
     if (percentage >= 60) return 'D'
     return 'F'
-  }
+  }, [])
 
-  const getGradeColor = (grade: string) => {
+  const getGradeColor = useCallback((grade: string) => {
     if (grade.startsWith('A')) return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
     if (grade.startsWith('B')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
     if (grade.startsWith('C')) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
     return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-  }
+  }, [])
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = useCallback((status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive"> = {
       'Completed': 'default',
       'Upcoming': 'secondary',
       'Ongoing': 'default'
     }
     return <Badge variant={variants[status]}>{status}</Badge>
-  }
+  }, [])
 
-  const getGradeBadge = (grade: string) => {
+  const getGradeBadge = useCallback((grade: string) => {
     return <Badge className={getGradeColor(grade)}>{grade}</Badge>
-  }
+  }, [getGradeColor])
 
-  const getRankBadge = (rank: number) => {
+  const getRankBadge = useCallback((rank: number) => {
     let variant: "default" | "secondary" | "destructive" = "default"
     if (rank <= 3) variant = "default"
     else if (rank <= 10) variant = "secondary"
     else variant = "destructive"
     
     return <Badge variant={variant}>#{rank}</Badge>
-  }
+  }, [])
+
+  const completedExams = useMemo(() => exams.filter(e => e.status === 'Completed').length, [exams])
+  const upcomingExams = useMemo(() => exams.filter(e => e.status === 'Upcoming').length, [exams])
+  const ongoingExams = useMemo(() => exams.filter(e => e.status === 'Ongoing').length, [exams])
 
   if (loading) {
     return (
@@ -626,7 +617,7 @@ export default function ExamsPage() {
                       <div>
                         <p className="text-green-600 dark:text-green-400 text-sm font-medium">Completed</p>
                         <p className="text-3xl font-bold text-green-900 dark:text-green-100">
-                          {exams.filter(e => e.status === 'Completed').length}
+                          {completedExams}
                         </p>
                       </div>
                       <div className="p-3 bg-green-600/20 rounded-lg">
@@ -642,7 +633,7 @@ export default function ExamsPage() {
                       <div>
                         <p className="text-amber-600 dark:text-amber-400 text-sm font-medium">Upcoming</p>
                         <p className="text-3xl font-bold text-amber-900 dark:text-amber-100">
-                          {exams.filter(e => e.status === 'Upcoming').length}
+                          {upcomingExams}
                         </p>
                       </div>
                       <div className="p-3 bg-amber-600/20 rounded-lg">
@@ -658,7 +649,7 @@ export default function ExamsPage() {
                       <div>
                         <p className="text-purple-600 dark:text-purple-400 text-sm font-medium">Active Now</p>
                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                          {exams.filter(e => e.status === 'Ongoing').length}
+                          {ongoingExams}
                         </p>
                       </div>
                       <div className="p-3 bg-purple-600/20 rounded-lg">
