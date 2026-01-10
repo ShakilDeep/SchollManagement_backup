@@ -1,491 +1,404 @@
-# Design.md - Maximum Efficiency & Performance Architecture
+# Codebase Optimization Plan
 
-## 🎯 Core Principles
+## Current Issues Identified
 
-1. **Code Minimalism**: Every line must earn its existence
-2. **Maximum Performance**: Zero unnecessary re-renders, optimized bundles
-3. **Best Practices**: Industry-standard patterns with proven efficiency
-4. **Type Safety**: Runtime + compile-time validation in one source
-5. **Scalability**: Easy to extend without refactoring
+### 1. Code Duplication
+- **API Routes**: 47 API routes with repetitive CRUD patterns
+- **Validation Schemas**: 7 validation files with similar structure
+- **Custom Hooks**: Multiple hooks doing similar data fetching
+- **Components**: 47+ dashboard components with repeated patterns
+- **Skeleton Loaders**: 6+ skeleton components with similar structure
 
----
+### 2. Design Pattern Violations
+- Violation of DRY (Don't Repeat Yourself) principle
+- No Factory Pattern for API routes
+- No Strategy Pattern for validation
+- No Repository Pattern for data access
+- No Builder Pattern for complex objects
+- No Observer Pattern for state management
 
-## 📐 Phase 1: Architecture Foundation (COMPLETED)
-
-### Stack Optimization
-- **Framework**: Next.js 15 (App Router) - Zero config, automatic optimization
-- **State Management**: react-hook-form (uncontrolled components) - 90% faster than controlled
-- **Validation**: Zod (runtime + TypeScript) - Single source of truth
-- **UI Components**: Radix UI - Headless primitives, accessible by default
-- **Data Fetching**: React Query - Caching, deduplication, background refetch
-- **Styling**: Tailwind CSS 4 - JIT compilation, purge unused styles
-
-### Performance Targets
-- First Load JS: < 150 KB per route
-- Time to Interactive: < 2 seconds
-- Re-renders: < 5% per user interaction
-- Bundle Size: < 500 KB total
+### 3. File Bloat
+- 47+ dashboard pages and components
+- 7 validation schemas that could be consolidated
+- Multiple similar utility files
+- Redundant API client abstractions
 
 ---
 
-## 🔧 Phase 2: Form Optimization (COMPLETED)
+## Optimization Strategy
 
-### Zod + react-hook-form Pattern
+### Phase 1: API Layer Consolidation (Reduce 47+ files to ~15)
 
-**Benefits:**
-- 70% less code than manual state management
-- Zero unnecessary re-renders
-- Runtime validation with type inference
-- Centralized error handling
+#### 1.1 Generic CRUD Factory Pattern
+**Files to create:**
+- `src/lib/api/base/crud-factory.ts` - Generic CRUD operations
+- `src/lib/api/base/api-handler.ts` - Standardized error/response handling
+- `src/lib/api/base/query-builder.ts` - Dynamic query construction
 
-**Implementation:**
-```tsx
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+**Files to consolidate:**
+- Merge all single-resource routes into dynamic handlers
+- Create unified route handlers for:
+  - Students, Teachers, Parents, Staff
+  - Attendance, Exams, Grades
+  - Library, Transport, Hostel
+  - Curriculum, Behavior, Messages
 
-const schema = z.object({
-  name: z.string().min(1),
-  email: z.string().email()
-})
+**Example Pattern:**
+```typescript
+// Before: src/app/api/students/route.ts (140 lines)
+// After: src/app/api/[resource]/route.ts (generic handler, ~40 lines)
 
-const form = useForm({
-  resolver: zodResolver(schema)
-})
-```
-
-**Results:**
-- staff/page.tsx: 400 lines removed (40% reduction)
-- behavior/page.tsx: 103 lines removed (16% reduction)
-- exams/page.tsx: 90 lines removed (15% reduction)
-- Total: 600+ lines removed
-
----
-
-## 🚀 Phase 3: Performance Optimization (CURRENT)
-
-### 3.1 Component Optimization
-
-#### Rules:
-1. **Use React.memo** for expensive components
-2. **useCallback** for stable function references
-3. **useMemo** for expensive calculations
-4. **Lazy loading** for heavy components
-5. **Code splitting** for routes
-
-#### Implementation:
-```tsx
-import { lazy, Suspense } from 'react'
-import { memo, useCallback, useMemo } from 'react'
-
-const HeavyComponent = lazy(() => import('./heavy-component'))
-
-const OptimizedComponent = memo(({ data, onUpdate }) => {
-  const handleClick = useCallback(() => {
-    onUpdate(data.id)
-  }, [data.id, onUpdate])
-
-  const processedData = useMemo(() => {
-    return expensiveCalculation(data)
-  }, [data])
-
-  return (
-    <Suspense fallback={<Loading />}>
-      <HeavyComponent data={processedData} onClick={handleClick} />
-    </Suspense>
-  )
-})
-```
-
-### 3.2 Server Components vs Client Components
-
-**Strategy:**
-- Server Components: Static content, data fetching (0 KB to client)
-- Client Components: Interactive UI only
-
-**Rules:**
-1. Default to Server Components
-2. Add 'use client' only when necessary
-3. Keep client components < 50 lines when possible
-4. Pass data from server to client as props
-
-### 3.3 Image Optimization
-
-```tsx
-import Image from 'next/image'
-
-<Image
-  src="/logo.png"
-  alt="Logo"
-  width={200}
-  height={100}
-  priority={false}
-  placeholder="blur"
-/>
-```
-
-**Benefits:**
-- Automatic WebP conversion
-- Lazy loading by default
-- Responsive images
-- CLS prevention
-
-### 3.4 Font Optimization
-
-```tsx
-import { Inter } from 'next/font/google'
-
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter'
-})
-```
-
-**Benefits:**
-- Self-hosting (no external requests)
-- Font subsetting (only needed characters)
-- FOUT prevention
-
----
-
-## 🎨 Phase 4: UI/UX Optimization
-
-### 4.1 Design System
-
-**Principles:**
-- Consistent spacing (4px base unit)
-- Consistent colors (8-color palette)
-- Consistent typography (3 sizes: sm, md, lg)
-- Consistent shadows (3 levels)
-
-**Implementation:**
-```tsx
-const spacing = {
-  xs: '4px',
-  sm: '8px',
-  md: '16px',
-  lg: '24px',
-  xl: '32px'
-}
-
-const colors = {
-  primary: 'hsl(222, 47%, 11%)',
-  accent: 'hsl(210, 100%, 50%)',
-  success: 'hsl(142, 71%, 45%)',
-  error: 'hsl(0, 84%, 60%)'
-}
-```
-
-### 4.2 Accessibility (WCAG AA)
-
-**Requirements:**
-- All interactive elements keyboard accessible
-- Color contrast ratio ≥ 4.5:1
-- ARIA labels for icon buttons
-- Focus indicators on all focusable elements
-
-### 4.3 Responsive Design
-
-**Breakpoints:**
-- Mobile: < 640px
-- Tablet: 640px - 1024px
-- Desktop: > 1024px
-
-**Strategy:**
-- Mobile-first approach
-- Touch targets minimum 44x44px
-- Responsive images with next/image
-
----
-
-## 📊 Phase 5: Data Optimization
-
-### 5.1 React Query Configuration
-
-```tsx
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      retry: 1
-    }
+createCRUDRoute({
+  resource: 'student',
+  schema: studentSchema,
+  includeRelations: ['grade', 'section', 'guardian'],
+  permissions: {
+    read: ['ADMIN', 'TEACHER'],
+    write: ['ADMIN']
   }
 })
 ```
 
-**Benefits:**
-- 5-minute cache window
-- Background refetch disabled (reduced network calls)
-- Single retry (balance UX and performance)
+**Expected Reduction**: 47 API files → 15 API files
 
-### 5.2 Server Actions (Next.js 15)
+---
 
-```tsx
-'use server'
+### Phase 2: Validation Layer Unification (Reduce 7 files to 1)
 
-async function createStaff(formData: FormData) {
-  const validated = staffFormSchema.parse(formData)
-  await db.staff.create({ data: validated })
-  revalidatePath('/dashboard/staff')
-}
+#### 2.1 Schema Builder Pattern
+**Files to create:**
+- `src/lib/validations/base/schema-builder.ts` - Fluent schema builder
+- `src/lib/validations/base/common-fields.ts` - Reusable field definitions
+
+**Files to consolidate:**
+- Merge: student.ts, staff.ts, exams.ts, attendance.ts, library.ts, behavior.ts, curriculum.ts
+- Into: `src/lib/validations/schemas.ts`
+
+**Example Pattern:**
+```typescript
+// Before: 7 separate validation files (~400 lines total)
+// After: Single file with reusable building blocks (~150 lines)
+
+const personSchema = schemaBuilder
+  .withCommonFields(['firstName', 'lastName'])
+  .withContactFields(['email', 'phone'])
+  .withAddressField()
+  .build()
+
+const studentSchema = schemaBuilder
+  .extend(personSchema)
+  .withAcademicFields(['rollNumber', 'grade', 'section'])
+  .build()
 ```
 
-**Benefits:**
-- No API route needed
-- Automatic TypeScript types
-- Progressive enhancement
+**Expected Reduction**: 7 validation files → 1 validation file
 
-### 5.3 Database Optimization
+---
 
-**Prisma Configuration:**
-```prisma
-generator client {
-  provider = "prisma-client-js"
-  previewFeatures = ["accelerate"]
-}
+### Phase 3: Component Library Standardization (Reduce 47+ components to ~25)
+
+#### 3.1 Generic Data Display Components
+**Files to create:**
+- `src/components/shared/data-grid.tsx` - Unified table/list component
+- `src/components/shared/data-card.tsx` - Generic card component
+- `src/components/shared/filters-bar.tsx` - Reusable filter controls
+- `src/components/shared/skeleton-loader.tsx` - Universal skeleton
+
+**Files to consolidate:**
+- Merge skeleton components: attendance-loading-skeleton.tsx, students-skeleton.tsx, exam-skeleton.tsx, timetable-skeleton.tsx
+- Merge card components: student-card.tsx, curriculum-card.tsx, lesson-card.tsx
+- Merge stat cards: stats-card.tsx, stats-cards.tsx
+
+**Example Pattern:**
+```typescript
+// Before: Multiple card components (~200 lines total)
+// After: Generic DataGrid component (~80 lines)
+
+<DataGrid
+  data={students}
+  columns={studentColumns}
+  filters={filters}
+  actions={actions}
+  emptyState={<StudentEmptyState />}
+/>
 ```
 
-**Benefits:**
-- Connection pooling
-- Query batching
-- Automatic caching (with Accelerate)
+**Expected Reduction**: 47+ components → 25 components
 
 ---
 
-## 🔒 Phase 6: Security Optimization
+### Phase 4: Hooks Consolidation (Reduce hooks to single pattern)
 
-### 6.1 Input Validation
+#### 4.1 Generic Query Hook Factory
+**Files to create:**
+- `src/lib/hooks/base/query-factory.ts` - Generic React Query hooks
+- `src/lib/hooks/base/mutation-factory.ts` - Generic mutation hooks
 
-**Zod Schema Rules:**
-- Sanitize all inputs
-- Length limits on all strings
-- Email format validation
-- Phone number format validation
+**Files to consolidate:**
+- Merge use-students.ts, use-attendance.ts into generic pattern
+- Create: `src/lib/hooks/use-resource.ts`
 
-### 6.2 XSS Prevention
+**Example Pattern:**
+```typescript
+// Before: Separate hooks for each resource (~200 lines total)
+// After: Single generic hook pattern (~60 lines)
 
-**Rules:**
-- Never use dangerouslySetInnerHTML
-- Validate all user inputs
-- Use Content Security Policy
-- Implement CSRF protection
-
-### 6.3 API Security
-
-```tsx
-import { getSession } from 'next-auth/react'
-
-export async function GET() {
-  const session = await getSession()
-  if (!session) return new Response('Unauthorized', { status: 401 })
-}
-```
-
----
-
-## 🧪 Phase 7: Testing Strategy
-
-### 7.1 Unit Tests
-
-**Focus:**
-- Zod schema validation
-- Utility functions
-- Custom hooks
-
-**Coverage Target:** 80%
-
-### 7.2 Integration Tests
-
-**Focus:**
-- Form submission flows
-- API endpoints
-- Component interactions
-
-**Coverage Target:** 60%
-
-### 7.3 E2E Tests
-
-**Focus:**
-- Critical user journeys
-- Cross-browser compatibility
-- Mobile responsiveness
-
-**Coverage Target:** 20%
-
----
-
-## 📈 Phase 8: Monitoring & Analytics
-
-### 8.1 Performance Monitoring
-
-**Tools:**
-- Vercel Analytics (Web Vitals)
-- React Query DevTools (development)
-- Chrome DevTools Lighthouse
-
-**Metrics:**
-- LCP (Largest Contentful Paint): < 2.5s
-- FID (First Input Delay): < 100ms
-- CLS (Cumulative Layout Shift): < 0.1
-
-### 8.2 Error Tracking
-
-**Tools:**
-- Sentry (error tracking)
-- Console error monitoring
-- API error logging
-
----
-
-## 🎯 Phase 9: Bundle Optimization
-
-### 9.1 Tree Shaking
-
-**Strategy:**
-- Use named exports, not default exports
-- Avoid importing entire libraries
-- Use ES modules, not CommonJS
-
-### 9.2 Code Splitting
-
-**Implementation:**
-```tsx
-import dynamic from 'next/dynamic'
-
-const Chart = dynamic(() => import('recharts'), {
-  loading: () => <div>Loading chart...</div>,
-  ssr: false
+const useStudents = createResourceHook('student', {
+  include: ['grade', 'section'],
+  cacheKey: 'students'
 })
 ```
 
-### 9.3 Dependency Optimization
-
-**Rules:**
-- Remove unused dependencies
-- Use lighter alternatives when possible
-- Bundle size analysis before adding new deps
+**Expected Reduction**: Multiple hook files → Single factory pattern
 
 ---
 
-## 🔄 Phase 10: Continuous Optimization
+### Phase 5: AI Services Unification (Reduce 7 services to 3)
 
-### 10.1 Weekly Tasks
+#### 5.1 AI Service Factory Pattern
+**Files to create:**
+- `src/lib/ai/base/ai-service-factory.ts` - Generic AI service builder
+- `src/lib/ai/base/prompt-templates.ts` - Centralized prompt management
 
-- Bundle size analysis
-- Lighthouse score checks
-- Code review for performance issues
+**Files to consolidate:**
+- Merge dashboard-prediction.ts, student-prediction-service.ts, student-performance.ts
+- Merge book-recommendation-service.ts, library-recommendations.ts
+- Keep: smart-chatbot.ts, attendance-alerts.ts
 
-### 10.2 Monthly Tasks
-
-- Dependency updates
-- Performance regression testing
-- Architecture review
-
-### 10.3 Quarterly Tasks
-
-- Major refactoring opportunities
-- Technology stack evaluation
-- Performance audit
+**Expected Reduction**: 7 AI service files → 3 AI service files
 
 ---
 
-## 📋 Code Review Checklist
+### Phase 6: Utility Consolidation
 
-### Before Merging:
-- [ ] No console.log statements
-- [ ] No unused imports
-- [ ] No inline styles (use Tailwind classes)
-- [ ] No any types (use proper TypeScript)
-- [ ] Components memoized if needed
-- [ ] Expensive calculations memoized
-- [ ] Functions stable references (useCallback)
-- [ ] Form validation with Zod
-- [ ] Loading states for async operations
-- [ ] Error handling for all API calls
+#### 6.1 Unified Utility Library
+**Files to create:**
+- `src/lib/utils/date.ts` - All date utilities
+- `src/lib/utils/string.ts` - All string utilities
+- `src/lib/utils/api.ts` - All API utilities
+- `src/lib/utils/validation.ts` - All validation utilities
 
-### Performance Check:
-- [ ] Lighthouse score ≥ 90
-- [ ] Bundle size < 500 KB
-- [ ] First Load JS < 150 KB
-- [ ] No memory leaks
-- [ ] No unnecessary re-renders
+**Files to consolidate:**
+- Merge scattered utilities into categorized modules
+- Remove duplicate helper functions
 
 ---
 
-## 🎓 Best Practices Summary
+## Design Patterns to Implement
 
-### Do:
-- ✅ Use Server Components by default
-- ✅ Use react-hook-form for forms
-- ✅ Use Zod for validation
-- ✅ Use React Query for data fetching
-- ✅ Use lazy loading for heavy components
-- ✅ Use memoization for expensive operations
-- ✅ Use TypeScript strictly
-- ✅ Use Tailwind for styling
-- ✅ Use Radix UI for primitives
-- ✅ Use next/image for images
+### 1. Factory Pattern
+- API Route Factory (`crud-factory.ts`)
+- Schema Builder Factory (`schema-builder.ts`)
+- Hook Factory (`query-factory.ts`)
+- AI Service Factory (`ai-service-factory.ts`)
 
-### Don't:
-- ❌ Use any types
-- ❌ Use inline styles
-- ❌ Use console.log in production
-- ❌ Use unnecessary useEffect hooks
-- ❌ Use large client components
-- ❌ Use controlled inputs (use react-hook-form)
-- ❌ Use manual validation (use Zod)
-- ❌ Use fetch without error handling
-- ❌ Use inline event handlers
-- ❌ Use unused imports
+### 2. Repository Pattern
+- Abstract data access layer
+- `src/lib/repositories/base-repository.ts`
+- Concrete repositories for each domain
 
----
+### 3. Strategy Pattern
+- Validation strategies (`strategies/`)
+- Export strategies (CSV, PDF, Excel)
+- Notification strategies (Email, SMS, Push)
 
-## 📊 Success Metrics
+### 4. Builder Pattern
+- Query Builder (`query-builder.ts`)
+- Schema Builder (`schema-builder.ts`)
+- Filter Builder (`filter-builder.ts`)
 
-### Code Quality:
-- Code duplication: < 15%
-- TypeScript coverage: 100%
-- Test coverage: 80% (unit), 60% (integration), 20% (E2E)
+### 5. Observer Pattern
+- Event Emitter for real-time updates
+- `src/lib/events/event-bus.ts`
+- Subscription management
 
-### Performance:
-- Lighthouse score: ≥ 90
-- First Load JS: < 150 KB
-- Time to Interactive: < 2s
-- Bundle size: < 500 KB
+### 6. Singleton Pattern
+- Already implemented for Prisma client
+- Extend to other shared resources
 
-### Developer Experience:
-- Build time: < 30s
-- Hot reload: < 1s
-- Time to add feature: < 1 hour
+### 7. Decorator Pattern
+- API middleware (logging, auth, caching)
+- Component decorators (withLoading, withError)
 
 ---
 
-## 🚀 Roadmap
+## File Structure After Optimization
 
-### Q1 2026:
-- ✅ Phase 1: Architecture Foundation
-- ✅ Phase 2: Form Optimization
-- 🔄 Phase 3: Performance Optimization (IN PROGRESS)
-
-### Q2 2026:
-- Phase 4: UI/UX Optimization
-- Phase 5: Data Optimization
-- Phase 6: Security Optimization
-
-### Q3 2026:
-- Phase 7: Testing Strategy
-- Phase 8: Monitoring & Analytics
-- Phase 9: Bundle Optimization
-
-### Q4 2026:
-- Phase 10: Continuous Optimization
-- Performance audit
-- Architecture review
+```
+src/
+├── lib/
+│   ├── api/
+│   │   ├── base/
+│   │   │   ├── crud-factory.ts          # Generic CRUD
+│   │   │   ├── api-handler.ts           # Error handling
+│   │   │   ├── query-builder.ts         # Dynamic queries
+│   │   │   └── middleware.ts            # API middleware
+│   │   ├── routes/                      # Route configurations
+│   │   └── types.ts                     # API types
+│   ├── repositories/
+│   │   ├── base-repository.ts
+│   │   ├── student-repository.ts
+│   │   ├── attendance-repository.ts
+│   │   └── ...
+│   ├── validations/
+│   │   ├── base/
+│   │   │   ├── schema-builder.ts       # Schema builder
+│   │   │   ├── common-fields.ts         # Reusable fields
+│   │   │   └── validators.ts            # Custom validators
+│   │   └── schemas.ts                   # All schemas
+│   ├── ai/
+│   │   ├── base/
+│   │   │   ├── ai-service-factory.ts
+│   │   │   └── prompt-templates.ts
+│   │   ├── services/
+│   │   │   ├── prediction-service.ts
+│   │   │   ├── recommendation-service.ts
+│   │   │   └── chatbot-service.ts
+│   │   └── types.ts
+│   ├── hooks/
+│   │   ├── base/
+│   │   │   ├── query-factory.ts
+│   │   │   └── mutation-factory.ts
+│   │   └── use-resource.ts
+│   ├── utils/
+│   │   ├── date.ts
+│   │   ├── string.ts
+│   │   ├── api.ts
+│   │   ├── validation.ts
+│   │   └── cn.ts
+│   ├── events/
+│   │   ├── event-bus.ts
+│   │   └── event-types.ts
+│   ├── db.ts
+│   └── react-query.tsx
+├── components/
+│   ├── shared/
+│   │   ├── data-grid.tsx                # Generic table/list
+│   │   ├── data-card.tsx                # Generic card
+│   │   ├── filters-bar.tsx              # Reusable filters
+│   │   ├── skeleton-loader.tsx          # Universal skeleton
+│   │   └── empty-state.tsx              # Generic empty state
+│   ├── ui/                              # shadcn components (keep)
+│   └── layout/                          # Layout components (keep)
+├── app/
+│   ├── api/
+│   │   ├── [resource]/
+│   │   │   └── route.ts                 # Dynamic resource handler
+│   │   ├── dashboard/
+│   │   │   └── route.ts
+│   │   └── auth/
+│   │       └── route.ts
+│   └── dashboard/
+│       ├── page.tsx
+│       ├── students/
+│       │   └── page.tsx                 # Uses generic components
+│       ├── attendance/
+│       │   └── page.tsx
+│       └── ...
+```
 
 ---
 
-*Last Updated: January 2026*
-*Version: 2.0*
+## Implementation Priority
+
+### High Priority (Immediate Impact)
+1. **API Factory Pattern** - Biggest file reduction (47 → 15)
+2. **Schema Builder Pattern** - Reduces validation files (7 → 1)
+3. **Generic Components** - Reduces component count (47 → 25)
+
+### Medium Priority (Code Quality)
+4. **Repository Pattern** - Better data access layer
+5. **Hook Factory** - Consistent data fetching
+6. **Utility Consolidation** - Remove duplication
+
+### Low Priority (Future Enhancement)
+7. **AI Service Factory** - Reduce AI files (7 → 3)
+8. **Event System** - Better state management
+9. **Strategy Pattern** - Flexible validation/export
+
+---
+
+## Expected Metrics
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Total API Files | 47 | 15 | 68% reduction |
+| Validation Files | 7 | 1 | 86% reduction |
+| Dashboard Components | 47+ | 25 | 47% reduction |
+| Hook Files | Multiple | 1 factory | 80% reduction |
+| AI Service Files | 7 | 3 | 57% reduction |
+| Code Duplication | ~30% | <5% | 83% reduction |
+| Average File Size | ~200 LOC | ~150 LOC | 25% reduction |
+| Total Lines of Code | ~15,000 | ~9,000 | 40% reduction |
+
+---
+
+## Migration Steps
+
+### Step 1: Create Base Infrastructure
+1. Implement CRUD Factory Pattern
+2. Implement Schema Builder Pattern
+3. Implement Generic Components
+4. Implement Hook Factory
+
+### Step 2: Migrate API Routes
+1. Create dynamic route handler
+2. Migrate Students API
+3. Migrate Attendance API
+4. Migrate Exams API
+5. Migrate remaining APIs
+
+### Step 3: Consolidate Validations
+1. Extract common fields
+2. Create schema builder
+3. Migrate student validation
+4. Migrate remaining validations
+
+### Step 4: Refactor Components
+1. Create generic DataGrid component
+2. Create generic DataCard component
+3. Migrate student cards
+4. Migrate attendance cards
+5. Migrate remaining cards
+
+### Step 5: Update Hooks
+1. Create hook factory
+2. Migrate use-students
+3. Migrate use-attendance
+4. Update remaining hooks
+
+### Step 6: Cleanup
+1. Remove old files
+2. Update imports
+3. Run tests
+4. Verify functionality
+
+---
+
+## Risk Mitigation
+
+### Potential Risks
+1. Breaking changes during migration
+2. Loss of specific business logic
+3. Testing complexity
+
+### Mitigation Strategies
+1. Feature flags for gradual rollout
+2. Comprehensive test coverage
+3. Parallel implementation (old + new)
+4. Code review for each migration
+5. Rollback plan for each phase
+
+---
+
+## Success Criteria
+
+- [ ] Reduce API files from 47 to 15
+- [ ] Reduce validation files from 7 to 1
+- [ ] Reduce dashboard components from 47+ to 25
+- [ ] Reduce total code by 40%
+- [ ] Implement Factory, Repository, Builder patterns
+- [ ] All existing functionality preserved
+- [ ] All tests passing
+- [ ] No performance degradation
+- [ ] Improved code maintainability

@@ -153,7 +153,6 @@ export default function HostelPage() {
       const data = await response.json()
       setHostels(data)
     } catch (error) {
-      console.error('Error fetching hostels:', error)
     } finally {
       setLoading(false)
     }
@@ -175,7 +174,6 @@ export default function HostelPage() {
       const data = await response.json()
       setAllocations(data)
     } catch (error) {
-      console.error('Error fetching allocations:', error)
     }
   }, [])
 
@@ -239,7 +237,6 @@ export default function HostelPage() {
       setIsAddHostelOpen(false)
       await fetchHostels()
     } catch (error) {
-      console.error('Error adding hostel:', error)
     }
   }, [fetchHostels])
 
@@ -265,7 +262,6 @@ export default function HostelPage() {
       await fetchRooms()
       await fetchHostels()
     } catch (error) {
-      console.error('Error adding room:', error)
     }
   }, [fetchRooms, fetchHostels])
 
@@ -291,7 +287,6 @@ export default function HostelPage() {
       await fetchRooms()
       await fetchHostels()
     } catch (error) {
-      console.error('Error adding allocation:', error)
     }
   }, [fetchAllocations, fetchRooms, fetchHostels])
 

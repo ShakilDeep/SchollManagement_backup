@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { behaviorRecordSchema, type BehaviorRecordInput } from '@/lib/validations/behavior'
+import { behaviorRecordSchema, type BehaviorRecordInput } from '@/lib/validations'
 
 interface Student {
   id: string

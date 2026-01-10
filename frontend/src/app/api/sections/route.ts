@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { sectionFormSchema } from '@/lib/validations'
+import { success, error, handleApiError, created } from '@/lib/api/base/api-handler'
 
 export async function GET(request: NextRequest) {
   try {
@@ -71,4 +73,35 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+export async function POST(request: NextRequest) {
+  return handleApiError(async () => {
+    const body = await request.json()
+    const validatedData = await sectionFormSchema.parseAsync(body)
+
+    const section = await db.section.create({
+      data: {
+        name: validatedData.name,
+        grade: { connect: { id: validatedData.grade } }
+      },
+      include: {
+        grade: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    })
+
+    return created({
+      id: section.id,
+      name: section.name,
+      grade: section.grade,
+      roomNumber: section.roomNumber,
+      capacity: section.capacity,
+      currentStrength: section.currentStrength
+    })
+  }, 'POST /sections')
 }

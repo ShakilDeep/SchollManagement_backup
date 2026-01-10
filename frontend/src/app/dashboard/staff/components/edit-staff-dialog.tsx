@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { staffFormSchema, StaffFormData } from '@/lib/validations/staff'
+import { staffFormSchema, type StaffFormData } from '@/lib/validations'
 
 interface Staff {
   id: string

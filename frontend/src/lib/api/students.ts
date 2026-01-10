@@ -44,9 +44,10 @@ export interface UpdateStudentInput {
 }
 
 export async function getStudents(rollNumber?: string): Promise<Student[]> {
-  return fetchAPI<Student[]>('/students', {
+  const response = await fetchAPI<{ data: Student[] }>('/students', {
     query: rollNumber ? { rollNumber } : undefined,
   })
+  return response.data || []
 }
 
 export async function getStudent(id: string): Promise<Student> {

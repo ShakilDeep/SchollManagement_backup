@@ -178,7 +178,6 @@ export default function ExamsPage() {
         total: 0
       })
     } catch (err) {
-      console.error('Failed to fetch exam results:', err)
     }
   }, [])
 
@@ -214,7 +213,6 @@ export default function ExamsPage() {
         setGrades(data || [])
       }
     } catch (err) {
-      console.error('Failed to fetch grades:', err)
     } finally {
       setIsLoadingGrades(false)
     }
@@ -313,7 +311,6 @@ export default function ExamsPage() {
         document.body.removeChild(link)
       }
     } catch (error) {
-      console.error('Failed to export results:', error)
     }
   }, [])
 
@@ -940,7 +937,6 @@ export default function ExamsPage() {
 
     {/* Filter Modal */}
     <Dialog open={showFilterModal} onOpenChange={(open) => {
-      console.log('Dialog onOpenChange called with:', open)
       setShowFilterModal(open)
     }}>
       <DialogContent className="sm:max-w-[425px]">
@@ -994,7 +990,7 @@ export default function ExamsPage() {
           <Button variant="outline" onClick={handleCloseFilterModal}>
             Cancel
           </Button>
-          <Button onClick={() => console.log('Applying filter:', examFilter)}>
+          <Button>
             Apply Filter
           </Button>
         </DialogFooter>

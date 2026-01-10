@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { createCurriculumFormSchema, type CreateCurriculumFormData } from '@/lib/validations/curriculum'
+import { curriculumFormSchema, type CreateCurriculumFormData } from '@/lib/validations'
 
 type Subject = {
   id: string
@@ -61,7 +61,7 @@ export function CreateCurriculumDialog({
   academicYears,
 }: CreateCurriculumDialogProps) {
   const form = useForm<CreateCurriculumFormData>({
-    resolver: zodResolver(createCurriculumFormSchema),
+    resolver: zodResolver(curriculumFormSchema),
     defaultValues: {
       name: '',
       subjectId: '',

@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { editCurriculumFormSchema, type EditCurriculumFormData } from '@/lib/validations/curriculum'
+import { curriculumFormSchema, type EditCurriculumFormData } from '@/lib/validations'
 
 type Subject = {
   id: string
@@ -74,7 +74,7 @@ export function EditCurriculumDialog({
   curriculum,
 }: EditCurriculumDialogProps) {
   const form = useForm<EditCurriculumFormData>({
-    resolver: zodResolver(editCurriculumFormSchema),
+    resolver: zodResolver(curriculumFormSchema),
     defaultValues: {
       name: '',
       subjectId: '',

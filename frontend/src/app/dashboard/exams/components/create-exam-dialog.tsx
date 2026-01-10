@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, X, FileText, Loader2 } from 'lucide-react'
-import { examSchema, ExamInput } from '@/lib/validations/exams'
+import { examSchema, type ExamInput } from '@/lib/validations'
 
 interface CreateExamDialogProps {
   open: boolean

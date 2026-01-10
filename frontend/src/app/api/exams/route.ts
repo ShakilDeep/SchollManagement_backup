@@ -129,8 +129,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No current academic year found' }, { status: 404 })
     }
 
-    console.log('Creating exam with dates:', { startDate, endDate, start, end })
-
     // Create exam
     const exam = await db.exam.create({
       data: {
@@ -174,17 +172,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ exam })
 
   } catch (error) {
-    console.error('Error creating exam:', error)
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      meta: error.meta
-    })
     return NextResponse.json(
       { 
-        error: 'Failed to create exam',
-        details: error.message,
-        meta: error.meta
+        error: 'Failed to create exam'
       },
       { status: 500 }
     )

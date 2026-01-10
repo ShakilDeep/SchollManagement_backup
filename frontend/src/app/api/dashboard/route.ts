@@ -244,7 +244,6 @@ export async function GET() {
     })
 
   } catch (error) {
-    console.error('[DASHBOARD_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

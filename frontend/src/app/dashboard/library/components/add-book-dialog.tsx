@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { bookSchema, type BookInput } from '@/lib/validations/library'
+import { bookSchema, type BookInput } from '@/lib/validations'
 
 interface AddBookDialogProps {
   open: boolean

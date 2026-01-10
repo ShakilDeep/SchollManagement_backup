@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-import { lessonFormSchema, type LessonFormData } from '@/lib/validations/curriculum'
+import { lessonFormSchema, type LessonFormData } from '@/lib/validations'
 
 type Lesson = {
   id: string
