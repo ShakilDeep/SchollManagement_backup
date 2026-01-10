@@ -192,8 +192,8 @@ export default function HostelPage() {
     const currentOccupancy = hostels.reduce((acc, h) => acc + h.currentOccupancy, 0)
     const occupancyRate = totalCapacity > 0 ? Math.round((currentOccupancy / totalCapacity) * 100) : 0
     const totalStudents = allocations.filter(a => a.status === 'Active').length
-    const maleStudents = allocations.filter(a => a.status === 'Active' && a.hostel?.type === 'Boys').length
-    const femaleStudents = allocations.filter(a => a.status === 'Active' && a.hostel?.type === 'Girls').length
+    const maleStudents = allocations.filter(a => a.status === 'Active' && a.hostel?.type === 'BOYS').length
+    const femaleStudents = allocations.filter(a => a.status === 'Active' && a.hostel?.type === 'GIRLS').length
     const monthlyRevenue = allocations.reduce((acc, a) => acc + (a.fees || 0), 0)
     const availableRooms = rooms.filter(r => r.currentOccupancy < r.capacity).length
     const pendingFees = allocations.filter(a => !a.fees && a.status === 'Active').length

@@ -41,7 +41,7 @@ export const StatsCard = memo(({
           </div>
           <div className={cn("flex items-center gap-1", getTrendColor(value, trendValue))}>
             {getTrendIcon(value, trendValue)}
-            <span className="text-sm">+{Math.round((value - trendValue) / trendValue * 100)}%</span>
+            <span className="text-sm">{trendValue > 0 ? `${Math.round((value - trendValue) / trendValue * 100)}%` : 'N/A'}</span>
           </div>
         </div>
         <CardTitle className="text-3xl font-bold mt-4">{value}</CardTitle>

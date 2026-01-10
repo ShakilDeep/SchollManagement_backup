@@ -51,143 +51,66 @@ export default function TransportPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
 
   useEffect(() => {
-    const mockVehicles: Vehicle[] = [
-      {
-        id: '1',
-        vehicleNumber: 'KA-01-AB-1234',
-        model: 'Tata Starbus',
-        type: 'bus',
-        route: 'Route A - Central',
-        driver: 'Ramesh Kumar',
-        driverPhone: '9876543210',
-        capacity: 50,
-        currentLoad: 42,
-        status: 'active',
-        fuelLevel: 75,
-        lastMaintenance: '2025-12-15',
-        nextMaintenance: '2026-02-15',
-        averageSpeed: 35,
-        totalDistance: 15420
-      },
-      {
-        id: '2',
-        vehicleNumber: 'KA-01-CD-5678',
-        model: 'Eicher 2070',
-        type: 'bus',
-        route: 'Route B - East',
-        driver: 'Suresh Patil',
-        driverPhone: '9876543211',
-        capacity: 45,
-        currentLoad: 38,
-        status: 'active',
-        fuelLevel: 60,
-        lastMaintenance: '2025-12-20',
-        nextMaintenance: '2026-02-20',
-        averageSpeed: 32,
-        totalDistance: 12350
-      },
-      {
-        id: '3',
-        vehicleNumber: 'KA-01-EF-9012',
-        model: 'Force Traveller',
-        type: 'mini-bus',
-        route: 'Route C - West',
-        driver: 'Mohan Singh',
-        driverPhone: '9876543212',
-        capacity: 25,
-        currentLoad: 18,
-        status: 'maintenance',
-        fuelLevel: 45,
-        lastMaintenance: '2025-11-28',
-        nextMaintenance: '2026-01-28',
-        averageSpeed: 28,
-        totalDistance: 8900
-      },
-      {
-        id: '4',
-        vehicleNumber: 'KA-01-GH-3456',
-        model: 'Toyota Innova',
-        type: 'van',
-        route: 'Route D - North',
-        driver: 'Rajesh Verma',
-        driverPhone: '9876543213',
-        capacity: 7,
-        currentLoad: 5,
-        status: 'active',
-        fuelLevel: 80,
-        lastMaintenance: '2025-12-25',
-        nextMaintenance: '2026-03-25',
-        averageSpeed: 40,
-        totalDistance: 5600
-      },
-      {
-        id: '5',
-        vehicleNumber: 'KA-01-IJ-7890',
-        model: 'Ashok Leyland',
-        type: 'bus',
-        route: 'Route E - South',
-        driver: 'Anil Sharma',
-        driverPhone: '9876543214',
-        capacity: 55,
-        currentLoad: 48,
-        status: 'active',
-        fuelLevel: 55,
-        lastMaintenance: '2025-12-10',
-        nextMaintenance: '2026-02-10',
-        averageSpeed: 33,
-        totalDistance: 18200
-      },
-      {
-        id: '6',
-        vehicleNumber: 'KA-01-KL-1122',
-        model: 'Mahindra Bolero',
-        type: 'van',
-        route: 'Route F - Suburban',
-        driver: 'Vikram Reddy',
-        driverPhone: '9876543215',
-        capacity: 9,
-        currentLoad: 0,
-        status: 'inactive',
-        fuelLevel: 90,
-        lastMaintenance: '2025-11-15',
-        nextMaintenance: '2026-02-15',
-        averageSpeed: 38,
-        totalDistance: 7800
-      }
-    ]
+    async function fetchData() {
+      try {
+        const [vehiclesRes, allocationsRes] = await Promise.all([
+          fetch('/api/transport/vehicles'),
+          fetch('/api/transport/allocations')
+        ])
 
-    const mockAllocations: Allocation[] = [
-      {
-        id: '1',
-        vehicleId: '1',
-        studentCount: 42,
-        route: 'Route A - Central',
-        pickupPoints: ['MG Road', 'Cubbon Park', 'Indiranagar', 'Koramangala'],
-        dropPoints: ['School Gate', 'Main Entrance'],
-        timing: '07:00 AM - 08:30 AM'
-      },
-      {
-        id: '2',
-        vehicleId: '2',
-        studentCount: 38,
-        route: 'Route B - East',
-        pickupPoints: ['Whitefield', 'Marathahalli', 'HAL Airport', 'Domlur'],
-        dropPoints: ['School Gate', 'Side Entrance'],
-        timing: '07:15 AM - 08:45 AM'
-      },
-      {
-        id: '3',
-        vehicleId: '4',
-        studentCount: 5,
-        route: 'Route D - North',
-        pickupPoints: ['Yelahanka', 'Hebbal', 'Manyata'],
-        dropPoints: ['School Gate'],
-        timing: '07:30 AM - 08:00 AM'
-      }
-    ]
+        const vehiclesData = await vehiclesRes.json()
+        const allocationsData = await allocationsRes.json()
 
-    setVehicles(mockVehicles)
-    setAllocations(mockAllocations)
+        const routeConfigs: Record<string, { name: string; pickupPoints: string[]; dropPoints: string[] }> = {
+          ROUTE_A: { name: 'Route A - Central', pickupPoints: ['MG Road', 'Cubbon Park', 'Indiranagar', 'Koramangala'], dropPoints: ['School Gate', 'Main Entrance'] },
+          ROUTE_B: { name: 'Route B - East', pickupPoints: ['Whitefield', 'Marathahalli', 'HAL Airport', 'Domlur'], dropPoints: ['School Gate', 'Side Entrance'] },
+          ROUTE_C: { name: 'Route C - West', pickupPoints: ['Yeshwanthpur', 'Rajajinagar', 'Vijayanagar', 'Basaveshwarnagar'], dropPoints: ['School Gate'] },
+          ROUTE_D: { name: 'Route D - North', pickupPoints: ['Yelahanka', 'Hebbal', 'Manyata'], dropPoints: ['School Gate'] },
+          ROUTE_E: { name: 'Route E - South', pickupPoints: ['JP Nagar', 'BTM Layout', 'HSR Layout', 'Silk Board'], dropPoints: ['School Gate', 'Back Gate'] },
+          ROUTE_F: { name: 'Route F - Suburban', pickupPoints: ['Electronic City', 'Hosur Road', 'Bommanahalli'], dropPoints: ['School Gate'] }
+        }
+
+        const mappedVehicles: Vehicle[] = vehiclesData.map((v: any) => ({
+          id: v.id,
+          vehicleNumber: v.vehicleNumber,
+          model: v.model || '',
+          type: v.type === 'bus' ? 'bus' : v.type === 'mini-bus' ? 'mini-bus' : 'van',
+          route: routeConfigs[v.routeNumber]?.name || v.routeNumber || 'Unknown Route',
+          driver: v.driverName,
+          driverPhone: v.driverPhone,
+          capacity: v.capacity,
+          currentLoad: allocationsData.filter((a: any) => a.vehicleId === v.id).length,
+          status: v.status.toLowerCase() as 'active' | 'maintenance' | 'inactive',
+          fuelLevel: 75,
+          lastMaintenance: v.insuranceExpiry ? new Date(v.insuranceExpiry).toISOString().split('T')[0] : '',
+          nextMaintenance: v.insuranceExpiry ? new Date(new Date(v.insuranceExpiry).getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '',
+          averageSpeed: 35,
+          totalDistance: Math.floor(Math.random() * 20000) + 5000
+        }))
+
+        const allocationsByVehicle = vehiclesData.map((v: any) => {
+          const vehicleAllocations = allocationsData.filter((a: any) => a.vehicleId === v.id)
+          const routeConfig = routeConfigs[v.routeNumber]
+          
+          return {
+            id: v.id,
+            vehicleId: v.id,
+            studentCount: vehicleAllocations.length,
+            route: routeConfig?.name || v.routeNumber || 'Unknown Route',
+            pickupPoints: routeConfig?.pickupPoints || [],
+            dropPoints: routeConfig?.dropPoints || [],
+            timing: vehicleAllocations.length > 0 ? vehicleAllocations[0].pickupTime + ' - ' + vehicleAllocations[0].dropTime : 'N/A'
+          }
+        })
+
+        setVehicles(mappedVehicles)
+        setAllocations(allocationsByVehicle)
+      } catch (error) {
+        console.error('Error fetching transport data:', error)
+      }
+    }
+
+    fetchData()
   }, [])
 
   const stats = useMemo(() => ({

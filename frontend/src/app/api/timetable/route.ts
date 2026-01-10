@@ -6,11 +6,21 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const sectionId = searchParams.get('sectionId')
     const gradeId = searchParams.get('gradeId')
+    const section = searchParams.get('section')
     const academicYearId = searchParams.get('academicYearId')
 
-    // If no parameters provided, return timetable for Grade 10, Section A
-    const targetSectionId = sectionId || (await getDefaultSectionId())
+    let targetSectionId = sectionId
+    if (!targetSectionId && gradeId && section) {
+      targetSectionId = await getSectionIdByGradeAndSection(gradeId, section)
+    }
+    if (!targetSectionId) {
+      targetSectionId = await getDefaultSectionId()
+    }
     const targetAcademicYearId = academicYearId || (await getCurrentAcademicYearId())
+
+    if (!targetSectionId || !targetAcademicYearId) {
+      return NextResponse.json([])
+    }
 
     const timetables = await db.timetable.findMany({
       where: {
@@ -35,7 +45,7 @@ export async function GET(request: NextRequest) {
     // Transform the data to match the frontend interface
     const transformedTimetables = timetables.map(tt => ({
       id: tt.id,
-      day: tt.dayOfWeek,
+      day: formatDayOfWeek(tt.dayOfWeek),
       period: tt.period,
       subject: tt.subject.name,
       type: getSubjectType(tt.subject.name),
@@ -77,23 +87,47 @@ async function getCurrentAcademicYearId(): Promise<string> {
   return academicYear?.id || ''
 }
 
+async function getSectionIdByGradeAndSection(gradeId: string, sectionName: string): Promise<string> {
+  const section = await db.section.findFirst({
+    where: {
+      gradeId: gradeId,
+      name: sectionName
+    }
+  })
+  return section?.id || ''
+}
+
+function formatDayOfWeek(dayOfWeek: string): string {
+  const dayMap: Record<string, string> = {
+    'MONDAY': 'Monday',
+    'TUESDAY': 'Tuesday',
+    'WEDNESDAY': 'Wednesday',
+    'THURSDAY': 'Thursday',
+    'FRIDAY': 'Friday'
+  }
+  return dayMap[dayOfWeek] || dayOfWeek
+}
+
 function getSubjectType(subject: string): string {
   const types: Record<string, string> = {
     'Mathematics': 'Practical',
     'English': 'Lecture',
-    'Science': 'Lab',
+    'Physics': 'Lab',
+    'Chemistry': 'Lab',
+    'Biology': 'Lab',
+    'Computer Science': 'Practical',
     'History': 'Lecture',
-    'Physical Ed': 'Practical',
-    'Art': 'Practical',
     'Geography': 'Lecture',
-    'Music': 'Practical',
-    'Computer': 'Lab'
+    'Economics': 'Lecture',
+    'Physical Education': 'Practical',
+    'Art': 'Practical',
+    'Music': 'Practical'
   }
   return types[subject] || 'Lecture'
 }
 
 function getSubjectDifficulty(subject: string): string {
-  const advancedSubjects = ['Science', 'Computer', 'Mathematics']
+  const advancedSubjects = ['Physics', 'Chemistry', 'Biology', 'Computer Science', 'Mathematics', 'Economics']
   return advancedSubjects.includes(subject) ? 'advanced' : 'regular'
 }
 

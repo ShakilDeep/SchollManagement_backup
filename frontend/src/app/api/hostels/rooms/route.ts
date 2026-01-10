@@ -7,20 +7,60 @@ export async function GET() {
       include: {
         hostel: true,
         allocations: {
-          where: {
-            status: 'Active',
-          },
+          where: { status: 'Active' },
           include: {
-            student: true,
-          },
-        },
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                rollNumber: true,
+                grade: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: {
-        hostelId: 'asc',
-      },
+        hostel: {
+          name: 'asc'
+        }
+      }
     })
 
-    return NextResponse.json(rooms)
+    const formattedRooms = rooms.map(room => ({
+      id: room.id,
+      hostelId: room.hostelId,
+      roomNumber: room.roomNumber,
+      floor: room.floor,
+      capacity: room.capacity,
+      currentOccupancy: room.allocations.length,
+      type: room.type,
+      hostel: {
+        id: room.hostel.id,
+        name: room.hostel.name,
+        type: room.hostel.type,
+      },
+      allocations: room.allocations.map(allocation => ({
+        id: allocation.id,
+        studentId: allocation.studentId,
+        student: {
+          id: allocation.student.id,
+          firstName: allocation.student.firstName,
+          lastName: allocation.student.lastName,
+          rollNumber: allocation.student.rollNumber,
+          grade: allocation.student.grade.name,
+        },
+        allocationDate: allocation.allocationDate,
+        status: allocation.status,
+      })),
+    }))
+
+    return NextResponse.json(formattedRooms)
   } catch (error) {
     console.error('[ROOMS_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })
@@ -36,10 +76,9 @@ export async function POST(req: Request) {
       floor,
       capacity,
       type,
-      facilities,
     } = body
 
-    if (!hostelId || !roomNumber || !capacity) {
+    if (!hostelId || !roomNumber || !floor || !capacity) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
@@ -47,15 +86,13 @@ export async function POST(req: Request) {
       data: {
         hostelId,
         roomNumber,
-        floor: parseInt(floor) || 1,
+        floor: parseInt(floor),
         capacity: parseInt(capacity),
-        currentOccupancy: 0,
         type,
-        facilities,
       },
     })
 
-    return NextResponse.json(room)
+    return NextResponse.json(room, { status: 201 })
   } catch (error) {
     console.error('[ROOMS_POST]', error)
     return new NextResponse('Internal Error', { status: 500 })

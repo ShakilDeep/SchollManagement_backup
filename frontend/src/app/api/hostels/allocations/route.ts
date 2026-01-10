@@ -7,16 +7,52 @@ export async function GET() {
       include: {
         hostel: true,
         room: true,
-        student: true,
+        student: {
+          include: {
+            grade: true,
+          },
+        },
       },
       orderBy: {
         allocationDate: 'desc',
       },
     })
 
-    return NextResponse.json(allocations)
+    const formattedAllocations = allocations.map(allocation => ({
+      id: allocation.id,
+      hostelId: allocation.hostelId,
+      roomId: allocation.roomId,
+      studentId: allocation.studentId,
+      academicYearId: allocation.academicYearId,
+      allocationDate: allocation.allocationDate,
+      checkoutDate: allocation.checkoutDate,
+      fees: allocation.fees,
+      status: allocation.status,
+      hostel: {
+        id: allocation.hostel.id,
+        name: allocation.hostel.name,
+        type: allocation.hostel.type,
+      },
+      room: {
+        id: allocation.room.id,
+        roomNumber: allocation.room.roomNumber,
+        floor: allocation.room.floor,
+        capacity: allocation.room.capacity,
+      },
+      student: {
+        id: allocation.student.id,
+        firstName: allocation.student.firstName,
+        lastName: allocation.student.lastName,
+        rollNumber: allocation.student.rollNumber,
+        grade: {
+          name: allocation.student.grade.name,
+        },
+      },
+    }))
+
+    return NextResponse.json(formattedAllocations)
   } catch (error) {
-    console.error('[HOSTEL_ALLOCATIONS_GET]', error)
+    console.error('[ALLOCATIONS_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }
@@ -42,32 +78,15 @@ export async function POST(req: Request) {
         roomId,
         studentId,
         academicYearId,
+        allocationDate: new Date(),
         fees: fees ? parseFloat(fees) : null,
         status: 'Active',
       },
     })
 
-    await db.room.update({
-      where: { id: roomId },
-      data: {
-        currentOccupancy: {
-          increment: 1,
-        },
-      },
-    })
-
-    await db.hostel.update({
-      where: { id: hostelId },
-      data: {
-        currentOccupancy: {
-          increment: 1,
-        },
-      },
-    })
-
-    return NextResponse.json(allocation)
+    return NextResponse.json(allocation, { status: 201 })
   } catch (error) {
-    console.error('[HOSTEL_ALLOCATIONS_POST]', error)
+    console.error('[ALLOCATIONS_POST]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

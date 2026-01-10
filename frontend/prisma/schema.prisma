@@ -630,7 +630,7 @@ model Report {
 }
 
 model BehaviorRecord {
-  id             String   @id
+  id             String   @id @default(cuid())
   studentId      String
   date           DateTime @default(now())
   type           String
