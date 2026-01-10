@@ -1,4 +1,6 @@
 import { GeminiClient } from '../gemini-client'
+import { db } from '@/lib/db'
+import { validateAttendanceRecords } from '../utils/data-validation'
 
 export interface AttendanceRecord {
   id: string
@@ -43,6 +45,8 @@ export interface AttendanceAlert {
 
 export class AttendanceAlertsService {
   private client: GeminiClient
+  private dataCache: Map<string, { data: AttendanceRecord[]; timestamp: number }> = new Map()
+  private readonly CACHE_TTL = 300000
 
   constructor() {
     this.client = new GeminiClient('gemini-2.0-flash', {
@@ -51,9 +55,146 @@ export class AttendanceAlertsService {
     })
   }
 
+  private clearExpiredCache(): void {
+    const now = Date.now()
+    for (const [key, value] of this.dataCache) {
+      if (now - value.timestamp > this.CACHE_TTL) {
+        this.dataCache.delete(key)
+      }
+    }
+  }
+
+  private getCachedData(key: string): AttendanceRecord[] | null {
+    const cached = this.dataCache.get(key)
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data
+    }
+    return null
+  }
+
+  private setCachedData(key: string, data: AttendanceRecord[]): void {
+    this.dataCache.set(key, { data, timestamp: Date.now() })
+  }
+
+  async loadAttendanceRecords(options?: {
+    studentId?: string
+    gradeId?: string
+    sectionId?: string
+    startDate?: Date
+    endDate?: Date
+    limit?: number
+  }): Promise<AttendanceRecord[]> {
+    const cacheKey = `attendance_${JSON.stringify(options)}`
+    const cached = this.getCachedData(cacheKey)
+    if (cached) return cached
+
+    const where: any = {}
+    if (options?.studentId) where.studentId = options.studentId
+    if (options?.startDate) where.date = { ...where.date, gte: options.startDate }
+    if (options?.endDate) where.date = { ...where.date, lte: options.endDate }
+
+    const attendances = await db.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            section: {
+              include: {
+                grade: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        date: 'desc'
+      },
+      take: options?.limit || 1000
+    })
+
+    const records: AttendanceRecord[] = attendances.map(a => ({
+      id: a.id,
+      studentId: a.studentId,
+      studentName: `${a.student.firstName} ${a.student.lastName}`,
+      date: a.date,
+      status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
+      checkIn: a.checkInTime?.toISOString(),
+      checkOut: a.checkOutTime?.toISOString()
+    }))
+
+    this.setCachedData(cacheKey, records)
+    return records
+  }
+
+  async loadStudentAttendanceRecords(studentId: string, days: number = 30): Promise<AttendanceRecord[]> {
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+
+    return this.loadAttendanceRecords({
+      studentId,
+      startDate,
+      endDate: new Date()
+    })
+  }
+
+  async loadGradeAttendanceRecords(gradeId: string, sectionId?: string, days: number = 30): Promise<AttendanceRecord[]> {
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+
+    const where: any = {
+      date: {
+        gte: startDate,
+        lte: new Date()
+      }
+    }
+
+    const attendances = await db.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            section: {
+              include: {
+                grade: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        date: 'desc'
+      },
+      take: 2000
+    })
+
+    const records: AttendanceRecord[] = attendances
+      .filter(a => a.student.section.gradeId === gradeId && (!sectionId || a.student.sectionId === sectionId))
+      .map(a => ({
+        id: a.id,
+        studentId: a.studentId,
+        studentName: `${a.student.firstName} ${a.student.lastName}`,
+        date: a.date,
+        status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
+        checkIn: a.checkInTime?.toISOString(),
+        checkOut: a.checkOutTime?.toISOString()
+      }))
+
+    return records
+  }
+
   async analyzeAbsencePattern(attendanceRecords: AttendanceRecord[]): Promise<AbsencePattern> {
     if (attendanceRecords.length === 0) {
       throw new Error('No attendance records provided')
+    }
+
+    const validation = validateAttendanceRecords(attendanceRecords)
+
+    if (!validation.isValid) {
+      console.warn('Attendance records validation issues:', validation.issues)
+    }
+
+    if (validation.warnings.length > 0) {
+      console.warn('Attendance records validation warnings:', validation.warnings)
     }
 
     const studentId = attendanceRecords[0].studentId

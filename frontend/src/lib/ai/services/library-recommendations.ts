@@ -1,4 +1,6 @@
 import { GeminiClient } from '../gemini-client'
+import { db } from '@/lib/db'
+import { validateStudentData, validateLibraryData } from '../utils/data-validation'
 
 interface Book {
   id: string
@@ -52,12 +54,167 @@ interface RecommendationResponse {
 
 export class LibraryRecommendationsService {
   private client: GeminiClient
+  private dataCache: Map<string, { data: any; timestamp: number }> = new Map()
+  private readonly CACHE_TTL = 600000
 
   constructor() {
     this.client = new GeminiClient('gemini-2.0-flash', {
-      temperature: 0.4,
-      maxOutputTokens: 2048
+      temperature: 0.5,
+      maxOutputTokens: 1024
     })
+  }
+
+  private getCachedData<T>(key: string): T | null {
+    const cached = this.dataCache.get(key)
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data as T
+    }
+    return null
+  }
+
+  private setCachedData<T>(key: string, data: T): void {
+    this.dataCache.set(key, { data, timestamp: Date.now() })
+  }
+
+  async loadAllBooks(): Promise<Book[]> {
+    const cacheKey = 'all_books'
+    const cached = this.getCachedData<Book[]>(cacheKey)
+    if (cached) return cached
+
+    const books = await db.book.findMany({
+      select: {
+        id: true,
+        isbn: true,
+        title: true,
+        author: true,
+        publisher: true,
+        category: true,
+        language: true,
+        pageCount: true,
+        totalCopies: true,
+        availableCopies: true,
+        location: true,
+        description: true
+      }
+    })
+
+    this.setCachedData(cacheKey, books)
+    return books
+  }
+
+  async loadStudentBorrowingHistory(studentId: string): Promise<BorrowingHistory[]> {
+    const cacheKey = `borrowing_history_${studentId}`
+    const cached = this.getCachedData<BorrowingHistory[]>(cacheKey)
+    if (cached) return cached
+
+    const borrowals = await db.libraryBorrowal.findMany({
+      where: { studentId },
+      include: {
+        book: {
+          select: {
+            id: true,
+            isbn: true,
+            title: true,
+            author: true,
+            category: true,
+            language: true
+          }
+        }
+      },
+      orderBy: { borrowDate: 'desc' },
+      take: 50
+    })
+
+    const history: BorrowingHistory[] = borrowals.map(b => ({
+      id: b.id,
+      bookId: b.bookId,
+      bookTitle: b.book.title,
+      bookAuthor: b.book.author,
+      bookCategory: b.book.category,
+      borrowDate: b.borrowDate.toISOString(),
+      returnDate: b.returnDate?.toISOString() || null,
+      dueDate: b.dueDate.toISOString(),
+      isReturned: b.returnDate !== null,
+      isOverdue: b.returnDate === null && b.dueDate < new Date()
+    }))
+
+    this.setCachedData(cacheKey, history)
+    return history
+  }
+
+  async loadStudentProfile(studentId: string): Promise<StudentProfile> {
+    const cacheKey = `student_profile_${studentId}`
+    const cached = this.getCachedData<StudentProfile>(cacheKey)
+    if (cached) return cached
+
+    const [student, examResults] = await Promise.all([
+      db.student.findUnique({
+        where: { id: studentId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          rollNumber: true,
+          grade: { select: { name: true } },
+          section: { select: { name: true } }
+        }
+      }),
+      db.examResult.findMany({
+        where: { studentId },
+        include: {
+          examPaper: {
+            include: {
+              subject: { select: { name: true } }
+            }
+          }
+        },
+        orderBy: {
+          examPaper: { examDate: 'desc' }
+        },
+        take: 10
+      })
+    ])
+
+    if (!student) {
+      throw new Error('Student not found')
+    }
+
+    const strongSubjects: string[] = []
+    const weakSubjects: string[] = []
+    const subjectPerformance = new Map<string, { sum: number; count: number }>()
+
+    examResults.forEach(r => {
+      const subject = r.examPaper.subject.name
+      if (!subjectPerformance.has(subject)) {
+        subjectPerformance.set(subject, { sum: 0, count: 0 })
+      }
+      const stats = subjectPerformance.get(subject)!
+      stats.sum += r.percentage
+      stats.count += 1
+    })
+
+    subjectPerformance.forEach((stats, subject) => {
+      const avg = stats.sum / stats.count
+      if (avg >= 80) strongSubjects.push(subject)
+      else if (avg < 60) weakSubjects.push(subject)
+    })
+
+    const profile: StudentProfile = {
+      id: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      grade: student.grade.name,
+      section: student.section.name,
+      rollNumber: student.rollNumber,
+      strongSubjects,
+      weakSubjects,
+      averagePerformance: subjectPerformance.size > 0
+        ? Array.from(subjectPerformance.values()).reduce((acc, stats) => acc + stats.sum / stats.count, 0) / subjectPerformance.size
+        : 0
+    }
+
+    this.setCachedData(cacheKey, profile)
+    return profile
   }
 
   async analyzeStudentProfile(
@@ -234,47 +391,45 @@ export class LibraryRecommendationsService {
     return 'Expert'
   }
 
-  async getRecommendationsForStudent(
+  async getRecommendationsForStudent(studentId: string): Promise<RecommendationResponse> {
+    const [profile, borrowingHistory, allBooks] = await Promise.all([
+      this.loadStudentProfile(studentId),
+      this.loadStudentBorrowingHistory(studentId),
+      this.loadAllBooks()
+    ])
+
+    const studentValidation = validateStudentData({
+      id: profile.studentId,
+      firstName: profile.name.split(' ')[0],
+      lastName: profile.name.split(' ').slice(1).join(' '),
+      grade: profile.grade,
+      section: profile.section
+    })
+
+    if (!studentValidation.isValid) {
+      console.warn('Student data validation warnings:', studentValidation.warnings)
+    }
+
+    const libraryValidation = validateLibraryData({
+      books: allBooks,
+      borrowingHistory: borrowingHistory
+    })
+
+    if (!libraryValidation.isValid) {
+      console.warn('Library data validation issues:', libraryValidation.issues)
+      console.warn('Library data validation warnings:', libraryValidation.warnings)
+    }
+
+    return this.analyzeStudentProfile(profile, borrowingHistory, allBooks)
+  }
+
+  async getRecommendationsForStudentLegacy(
     studentId: string,
     borrowingHistory: BorrowingHistory[],
     allBooks: Book[]
   ): Promise<RecommendationResponse> {
-    const { db } = await import('@/lib/db')
-    
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        rollNumber: true,
-        grade: {
-          select: {
-            name: true
-          }
-        },
-        section: {
-          select: {
-            name: true
-          }
-        }
-      }
-    })
-
-    if (!student) {
-      throw new Error('Student not found')
-    }
-
-    const studentProfile: StudentProfile = {
-      id: student.id,
-      firstName: student.firstName,
-      lastName: student.lastName,
-      grade: student.grade.name,
-      section: student.section.name,
-      rollNumber: student.rollNumber
-    }
-
-    return this.analyzeStudentProfile(studentProfile, borrowingHistory, allBooks)
+    const profile = await this.loadStudentProfile(studentId)
+    return this.analyzeStudentProfile(profile, borrowingHistory, allBooks)
   }
 }
 
