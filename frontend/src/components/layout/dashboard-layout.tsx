@@ -19,7 +19,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       
       {/* Main Content Area */}
       <div className={cn(
-        'relative z-10 transition-all duration-500',
+        'relative z-10 layout-stable w-full',
         'lg:ml-72',
         sidebarCollapsed && 'lg:ml-20'
       )}>

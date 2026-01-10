@@ -147,7 +147,6 @@ export default function MessagesPage() {
       const data = await response.json()
       setMessages(data)
     } catch (error) {
-      console.error('Error fetching messages:', error)
     } finally {
       setLoading(false)
     }
@@ -166,7 +165,6 @@ export default function MessagesPage() {
           prev.map((m) => (m.id === message.id ? { ...m, isRead: true, readAt: new Date() } : m))
         )
       } catch (error) {
-        console.error('Error marking message as read:', error)
       }
     }
   }, [folder])
@@ -181,7 +179,6 @@ export default function MessagesPage() {
         setSelectedMessage(null)
       }
     } catch (error) {
-      console.error('Error deleting message:', error)
     }
   }, [selectedMessage])
 
@@ -214,7 +211,6 @@ export default function MessagesPage() {
         fetchMessages()
       }
     } catch (error) {
-      console.error('Error sending message:', error)
     }
   }, [composeForm.to, composeForm.subject, composeForm.content, composeForm.priority, folder, fetchMessages, selectedMessage])
 
@@ -242,7 +238,6 @@ export default function MessagesPage() {
         setComposeForm({ ...composeForm, content: data.data.suggestedReply })
       }
     } catch (error) {
-      console.error('Error getting AI suggestion:', error)
     } finally {
       setAiLoading(false)
     }

@@ -1,12 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, memo, lazy, Suspense } from 'react'
-import Link from 'next/link'
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -19,17 +17,9 @@ import {
   Download,
   Filter,
   UserPlus,
-  GraduationCap,
-  Mail,
-  Phone,
-  Calendar,
-  MapPin,
-  Shield,
-  Eye,
-  Edit
 } from 'lucide-react'
 
-import { type Student } from '@/types/student'
+import { useStudents, useCreateStudent } from '@/lib/hooks/use-students'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { StudentCard } from './components/student-card'
 import { StudentsPageSkeleton } from './components/students-skeleton'
@@ -38,30 +28,15 @@ import { StatsCards } from './components/stats-cards'
 const AddStudentDialog = lazy(() => import('./components/add-student-dialog'))
 
 export default function StudentsPage() {
-  const [students, setStudents] = useState<Student[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: students = [], isLoading } = useStudents()
+  const createStudent = useCreateStudent()
+  
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [gradeFilter, setGradeFilter] = useState('all')
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 300)
-
-  useEffect(() => {
-    const fetchStudents = async () => {
-      try {
-        const res = await fetch('/api/students')
-        if (!res.ok) throw new Error('Failed to fetch students')
-        const data = await res.json()
-        setStudents(data)
-      } catch (error) {
-        console.error(error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStudents()
-  }, [])
 
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
@@ -121,38 +96,19 @@ export default function StudentsPage() {
 
   const handleAddStudent = useCallback(async (studentData: any) => {
     try {
-      const response = await fetch('/api/students', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...studentData,
-          status: 'Active'
-        }),
+      await createStudent.mutateAsync({
+        ...studentData,
+        status: 'Active'
       })
-      
-      if (!response.ok) {
-        const error = await response.text()
-        throw new Error(error)
-      }
-      
-      const res = await fetch('/api/students')
-      if (res.ok) {
-        const data = await res.json()
-        setStudents(data)
-      }
-      
       return { success: true }
     } catch (error) {
-      console.error('Error adding student:', error)
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
     }
-  }, [])
+  }, [createStudent])
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 pb-8" style={{ contentVisibility: 'auto' }}>
+      <div className="space-y-8 pb-8 content-visibility-auto">
         {/* Header Section */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -238,8 +194,10 @@ export default function StudentsPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3" style={{ contentVisibility: 'auto', containIntrinsicSize: '400px' }}>
-          {filteredStudents.length === 0 ? (
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3 content-visibility-auto">
+          {isLoading ? (
+            <StudentsPageSkeleton />
+          ) : filteredStudents.length === 0 ? (
             <div className="col-span-full py-16 text-center">
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                 <Search className="w-10 h-10 text-slate-400" />

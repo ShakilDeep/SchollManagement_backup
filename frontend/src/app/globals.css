@@ -120,3 +120,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .content-visibility-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 400px;
+  }
+  
+  .content-visibility-auto-lg {
+    content-visibility: auto;
+    contain-intrinsic-size: 500px;
+  }
+
+  .layout-stable {
+    contain: layout;
+  }
+
+  .layout-paint-stable {
+    contain: layout paint;
+  }
+
+  .layout-stable-container {
+    contain: strict;
+  }
+}

@@ -255,8 +255,7 @@ export default function TimetablePage() {
           {weeklySchedule.map(({ day, periods }) => (
             <Card 
               key={day} 
-              className={`${day === selectedDay ? 'ring-2 ring-blue-500' : ''}`}
-              style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}
+              className={`${day === selectedDay ? 'ring-2 ring-blue-500' : ''} content-visibility-auto-lg`}
             >
               <CardHeader className="pb-2">
                 <CardTitle className="text-center">{day}</CardTitle>

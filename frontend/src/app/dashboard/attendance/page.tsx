@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback, memo, lazy, Suspense } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useAttendance, useAttendanceStats, useGrades, useSections, useSaveAttendance } from '@/lib/api/hooks/use-attendance'
 
 const AttendanceRow = lazy(() => import('./components/attendance-row').then(m => ({ default: m.AttendanceRow })))
 const StatsCard = lazy(() => import('./components/stats-card').then(m => ({ default: m.StatsCard })))
@@ -58,7 +59,7 @@ import {
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isSameDay, subDays } from 'date-fns'
 import { cn } from '@/lib/utils'
 
-interface StudentAttendance {
+export interface StudentAttendance {
   id: string
   rollNumber: string
   name: string
@@ -72,24 +73,13 @@ interface StudentAttendance {
   phone?: string
 }
 
-interface AttendanceTrend {
+export interface AttendanceTrend {
   date: Date
   present: number
   absent: number
   late: number
   halfDay: number
   rate: number
-}
-
-interface Grade {
-  id: string
-  name: string
-}
-
-interface Section {
-  id: string
-  name: string
-  gradeId: string
 }
 
 // Utility functions moved outside component for reusability
@@ -139,142 +129,47 @@ const getStatusConfig = (status: string) => {
   return configs[status as keyof typeof configs] || configs.Unmarked
 }
 
-// Force recompile - attendance page component
+const currentDate = new Date()
+
 export default function AttendancePage() {
   const [date, setDate] = useState<Date | undefined>(new Date())
   const [grade, setGrade] = useState<string>('all')
   const [section, setSection] = useState<string>('all')
-  const [attendanceData, setAttendanceData] = useState<StudentAttendance[]>([])
   const [searchTerm, setSearchTerm] = useState<string>('')
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 300)
   const [selectedView, setSelectedView] = useState<'overview' | 'detailed'>('overview')
-  const [trendData, setTrendData] = useState<AttendanceTrend[]>([])
-  const [currentDate, setCurrentDate] = useState<Date | null>(null)
   
-  const [grades, setGrades] = useState<Grade[]>([])
-  const [sections, setSections] = useState<Section[]>([])
-  const [loading, setLoading] = useState(false)
-  const [statsLoading, setStatsLoading] = useState(false)
-
-  // Initialize client-side data
+  const { data: attendanceData = [], isLoading: attendanceLoading } = useAttendance({
+    date: date?.toISOString() || '',
+    gradeId: grade === 'all' ? undefined : grade,
+    sectionId: section === 'all' ? undefined : section,
+    search: debouncedSearchTerm
+  })
+  
+  const { data: statsData, isLoading: statsLoading } = useAttendanceStats(date?.toISOString() || '')
+  
+  const { data: grades = [] } = useGrades()
+  
+  const { data: sections = [] } = useSections(grade === 'all' ? undefined : grade)
+  
+  const saveAttendanceMutation = useSaveAttendance()
+  
+  const [localAttendanceData, setLocalAttendanceData] = useState<StudentAttendance[]>([])
+  const prevAttendanceDataRef = useRef<StudentAttendance[]>([])
+  
   useEffect(() => {
-    const now = new Date()
-    setCurrentDate(now)
-    // Removed generateMockTrendData call
-    fetchGrades()
-    fetchSections()
-  }, [])
-
-  // Fetch stats and trends
-  const fetchStats = useCallback(async () => {
-    if (!date) return
-    setStatsLoading(true)
-    try {
-        const res = await fetch(`/api/attendance/stats?date=${date.toISOString()}`)
-        const data = await res.json()
-        
-        // Convert date strings back to Date objects
-        const formattedTrends = data.trends.map((t: any) => ({
-            ...t,
-            date: new Date(t.date)
-        }))
-        setTrendData(formattedTrends)
-    } catch (error) {
-        console.error('Failed to fetch stats', error)
-    } finally {
-        setStatsLoading(false)
+    if (attendanceData && JSON.stringify(prevAttendanceDataRef.current) !== JSON.stringify(attendanceData)) {
+      setLocalAttendanceData(attendanceData)
+      prevAttendanceDataRef.current = attendanceData
     }
-  }, [date])
-
-  // Fetch grades
-  const fetchGrades = useCallback(async () => {
-    try {
-      const res = await fetch('/api/grades')
-      const data = await res.json()
-      setGrades(data)
-    } catch (error) {
-      console.error('Failed to fetch grades', error)
-    }
-  }, [])
-
-  // Fetch sections
-  const fetchSections = useCallback(async (gradeId?: string) => {
-    try {
-      const url = '/api/sections'
-      const res = await fetch(url)
-      const data = await res.json()
-      
-      // Extract sections from the API response
-      if (data.grades && Array.isArray(data.grades)) {
-        let filteredSections = data.grades.flatMap(grade => grade.sections || [])
-        
-        // Filter by grade if specified
-        if (gradeId && gradeId !== 'all') {
-          filteredSections = filteredSections.filter(section => 
-            data.grades.find(grade => 
-              grade.id === gradeId && grade.sections.some(s => s.id === section.id)
-            )
-          )
-        }
-        
-        setSections(filteredSections)
-      } else {
-        setSections([])
-      }
-    } catch (error) {
-      console.error('Failed to fetch sections', error)
-      setSections([])
-    }
-  }, [])
-
-  // Fetch attendance data
-  const fetchAttendance = useCallback(async () => {
-    if (!date) return
-    
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.append('date', date.toISOString())
-      if (grade && grade !== 'all') params.append('gradeId', grade)
-      if (section && section !== 'all') params.append('sectionId', section)
-      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm)
-
-      const res = await fetch(`/api/attendance?${params.toString()}`)
-      const data = await res.json()
-      setAttendanceData(data)
-    } catch (error) {
-      console.error('Failed to fetch attendance', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [date, grade, section, debouncedSearchTerm])
-
-  // Update sections when grade changes
-  useEffect(() => {
-    if (grade && grade !== 'all') {
-      fetchSections(grade)
-    } else {
-      fetchSections()
-    }
-  }, [grade])
-
-  // Fetch attendance and stats when filters change
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchAttendance()
-      // Only fetch stats if date changes, strictly speaking stats are global for the date
-      // But let's just fetch them whenever main data fetches for simplicity
-      fetchStats()
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [date, grade, section, searchTerm])
-
+  }, [attendanceData])
+  
   const stats = useMemo(() => {
-    const total = attendanceData.length
-    const present = attendanceData.filter((s) => s.status === 'Present').length
-    const absent = attendanceData.filter((s) => s.status === 'Absent').length
-    const late = attendanceData.filter((s) => s.status === 'Late').length
-    const halfDay = attendanceData.filter((s) => s.status === 'HalfDay').length
+    const total = localAttendanceData.length
+    const present = localAttendanceData.filter((s) => s.status === 'Present').length
+    const absent = localAttendanceData.filter((s) => s.status === 'Absent').length
+    const late = localAttendanceData.filter((s) => s.status === 'Late').length
+    const halfDay = localAttendanceData.filter((s) => s.status === 'HalfDay').length
     
     const effectivePresent = present + late + halfDay
 
@@ -286,10 +181,24 @@ export default function AttendancePage() {
       halfDay,
       rate: total > 0 ? (effectivePresent / total * 100) : 0
     }
-  }, [attendanceData])
+  }, [localAttendanceData])
+
+  const gradeOptions = useMemo(() => {
+    return [
+      { id: 'all', name: 'All Grades' },
+      ...(grades || [])
+    ]
+  }, [grades])
+
+  const sectionOptions = useMemo(() => {
+    return [
+      { id: 'all', name: 'All Sections' },
+      ...(sections || [])
+    ]
+  }, [sections])
 
   const handleStatusChange = useCallback((studentId: string, newStatus: StudentAttendance['status']) => {
-    setAttendanceData(prev =>
+    setLocalAttendanceData(prev =>
       prev.map(student =>
         student.id === studentId
           ? { ...student, status: newStatus }
@@ -299,7 +208,7 @@ export default function AttendancePage() {
   }, [])
 
   const handleMarkAllPresent = useCallback(() => {
-    setAttendanceData(prev =>
+    setLocalAttendanceData(prev =>
       prev.map(student => ({ ...student, status: 'Present' }))
     )
   }, [])
@@ -316,24 +225,14 @@ export default function AttendancePage() {
     return 'text-slate-500'
   }, [])
 
-  const handleSaveAttendance = useCallback(async () => {
+  const handleSaveAttendance = useCallback(() => {
     if (!date) return
-    try {
-      await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: date.toISOString(),
-          attendanceData: attendanceData.map(s => ({ id: s.id, status: s.status }))
-        })
-      })
-      alert('Attendance saved successfully')
-      fetchStats()
-    } catch (error) {
-      console.error('Failed to save attendance', error)
-      alert('Failed to save attendance')
-    }
-  }, [date, attendanceData, fetchStats])
+    
+    saveAttendanceMutation.mutate({
+      date: date.toISOString(),
+      attendanceData: localAttendanceData.map(s => ({ id: s.id, status: s.status }))
+    })
+  }, [date, localAttendanceData, saveAttendanceMutation])
 
   return (
     <DashboardLayout>
@@ -363,9 +262,9 @@ export default function AttendancePage() {
                     Live Data
                   </span>
                   <span>•</span>
-                  <span>{currentDate ? format(currentDate, 'EEEE, MMMM d, yyyy') : 'Loading...'}</span>
+                  <span>{format(currentDate, 'EEEE, MMMM d, yyyy')}</span>
                   <span>•</span>
-                  <span>{attendanceData.length} Students</span>
+                  <span>{localAttendanceData.length} Students</span>
                 </div>
               </div>
               
@@ -485,8 +384,7 @@ export default function AttendancePage() {
                       <SelectValue placeholder="All Grades" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Grades</SelectItem>
-                      {grades.map((g) => (
+                      {gradeOptions.map((g) => (
                         <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -500,8 +398,7 @@ export default function AttendancePage() {
                       <SelectValue placeholder="All Sections" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Sections</SelectItem>
-                      {sections.map((s) => (
+                      {sectionOptions.map((s) => (
                         <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -590,9 +487,9 @@ export default function AttendancePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {trendData.length > 0 ? (
+                {statsData?.trends && statsData.trends.length > 0 ? (
                   <div className="grid grid-cols-7 gap-2">
-                    {trendData.map((day, index) => (
+                    {statsData.trends.map((day, index) => (
                     <div key={index} className="text-center space-y-2">
                       <div className="text-xs font-medium text-slate-500">
                         {format(day.date, 'EEE')}
@@ -643,7 +540,7 @@ export default function AttendancePage() {
                   </div>
                   <CardTitle className="text-xl">Student Attendance Details</CardTitle>
                   <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
-                    {attendanceData.length} Students
+                    {localAttendanceData.length} Students
                   </Badge>
                 </div>
                 <Button 
@@ -669,18 +566,18 @@ export default function AttendancePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {loading ? (
+                    {attendanceLoading ? (
                       <Suspense fallback={null}>
                         <AttendanceLoadingSkeleton />
                       </Suspense>
-                    ) : attendanceData.length === 0 ? (
+                    ) : localAttendanceData.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="h-24 text-center text-slate-500">
                           No students found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      attendanceData.map((student) => (
+                      localAttendanceData.map((student) => (
                         <Suspense key={student.id} fallback={null}>
                           <AttendanceRow
                             student={student}

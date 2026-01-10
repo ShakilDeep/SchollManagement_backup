@@ -100,7 +100,6 @@ export default function DashboardPage() {
         const dashboardData = await res.json()
         setData(dashboardData)
       } catch (error) {
-        console.error('Error fetching dashboard data:', error)
       } finally {
         setLoading(false)
       }
@@ -117,7 +116,6 @@ export default function DashboardPage() {
         const aiData = await res.json()
         setAiPredictions(aiData.data)
       } catch (error) {
-        console.error('Error fetching AI predictions:', error)
       } finally {
         setAiLoading(false)
       }
@@ -139,7 +137,6 @@ export default function DashboardPage() {
       const aiData = await res.json()
       setAiPredictions(aiData.data)
     } catch (error) {
-      console.error('Error refreshing AI predictions:', error)
     } finally {
       setAiLoading(false)
     }
@@ -148,14 +145,105 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="space-y-8">
-          <div className="animate-pulse">
-            <div className="h-64 bg-gradient-to-r from-violet-200 to-fuchsia-200 rounded-3xl"></div>
+        <div className="space-y-8 pb-8 layout-stable">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-violet-200 to-fuchsia-200 animate-pulse min-h-[20rem]">
+            <div className="p-8">
+              <div className="h-6 w-32 bg-white/40 rounded-full mb-8"></div>
+              <div className="h-12 w-96 bg-white/40 rounded-lg mb-2"></div>
+              <div className="h-6 w-64 bg-white/30 rounded-lg mb-12"></div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-white/20">
+                <div className="min-h-[5rem]">
+                  <div className="h-10 w-20 bg-white/40 rounded-lg mb-2"></div>
+                  <div className="h-4 w-24 bg-white/30 rounded"></div>
+                </div>
+                <div className="min-h-[5rem]">
+                  <div className="h-10 w-16 bg-white/40 rounded-lg mb-2"></div>
+                  <div className="h-4 w-24 bg-white/30 rounded"></div>
+                </div>
+                <div className="min-h-[5rem]">
+                  <div className="h-10 w-12 bg-white/40 rounded-lg mb-2"></div>
+                  <div className="h-4 w-24 bg-white/30 rounded"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 layout-stable">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-slate-200 rounded-xl animate-pulse"></div>
+              <div key={i} className="bg-white dark:bg-slate-800 rounded-xl shadow-md animate-pulse min-h-[8rem]">
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="h-12 w-12 bg-slate-200 dark:bg-slate-700 rounded-2xl"></div>
+                    <div className="h-6 w-12 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+                  </div>
+                  <div className="h-10 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg mb-2"></div>
+                  <div className="h-5 w-24 bg-slate-200 dark:bg-slate-700 rounded mb-1"></div>
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                </div>
+              </div>
             ))}
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="h-6 w-48 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+              <div className="h-8 w-24 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3 layout-stable">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white dark:bg-slate-800 rounded-xl shadow-md animate-pulse min-h-[12rem]">
+                  <div className="p-6">
+                    <div className="h-6 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg mb-4"></div>
+                    <div className="space-y-3">
+                      <div className="h-4 w-full bg-slate-200 dark:bg-slate-700 rounded"></div>
+                      <div className="h-4 w-3/4 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                      <div className="h-4 w-1/2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-8 lg:grid-cols-3 layout-stable">
+            <div className="lg:col-span-2 space-y-6 layout-stable">
+              <div className="flex items-center justify-between">
+                <div className="h-6 w-48 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+                <div className="h-6 w-16 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+              </div>
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-start gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 animate-pulse min-h-[6rem]">
+                    <div className="h-12 w-12 bg-slate-200 dark:bg-slate-700 rounded-xl shrink-0"></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="h-4 w-3/4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                      <div className="h-3 w-full bg-slate-200 dark:bg-slate-700 rounded mb-1"></div>
+                      <div className="h-3 w-1/2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-8 layout-stable">
+              <div className="rounded-3xl bg-slate-900 p-6 shadow-xl animate-pulse min-h-[20rem]">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="h-8 w-8 bg-slate-700 rounded-lg"></div>
+                  <div className="h-6 w-32 bg-slate-700 rounded-lg"></div>
+                </div>
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-16 w-full bg-slate-800 rounded-xl mb-3 last:mb-0"></div>
+                ))}
+              </div>
+              <div className="space-y-4 min-h-[35rem]">
+                <div className="h-6 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="rounded-2xl p-5 border bg-slate-50 dark:bg-slate-900/10 border-slate-100 dark:border-slate-800 animate-pulse min-h-[7rem]">
+                    <div className="space-y-2">
+                      <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+                      <div className="h-4 w-full bg-slate-200 dark:bg-slate-700 rounded"></div>
+                      <div className="h-3 w-1/2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </DashboardLayout>
@@ -204,9 +292,9 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
+      <div className="space-y-8 layout-stable">
         {/* Welcome Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-violet-600 to-fuchsia-600 p-8 text-white shadow-xl">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-violet-600 to-fuchsia-600 p-8 text-white shadow-xl min-h-[20rem]">
           <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute bottom-0 left-0 -mb-10 -ml-10 h-64 w-64 rounded-full bg-black/10 blur-3xl" />
           
@@ -231,16 +319,16 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-white/20">
-              <div>
-                <p className="text-3xl font-bold mb-1">{data.stats.find(s => s.title === 'Attendance Rate')?.value || '0%'}</p>
+              <div className="min-h-[5rem]">
+                <p className="text-3xl font-bold mb-1 min-h-[3rem]">{data.stats.find(s => s.title === 'Attendance Rate')?.value || '0%'}</p>
                 <p className="text-sm text-white/70">Attendance Rate</p>
               </div>
-              <div>
-                <p className="text-3xl font-bold mb-1">{data.stats.find(s => s.title === 'Total Students')?.change || '+0'}</p>
+              <div className="min-h-[5rem]">
+                <p className="text-3xl font-bold mb-1 min-h-[3rem]">{data.stats.find(s => s.title === 'Total Students')?.change || '+0'}</p>
                 <p className="text-sm text-white/70">New Students</p>
               </div>
-              <div>
-                <p className="text-3xl font-bold mb-1">{data.highlights.length}</p>
+              <div className="min-h-[5rem]">
+                <p className="text-3xl font-bold mb-1 min-h-[3rem]">{data.highlights.length}</p>
                 <p className="text-sm text-white/70">Key Metrics</p>
               </div>
             </div>
@@ -248,11 +336,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 layout-stable">
           {data.stats.map((stat) => {
             const IconComponent = iconMap[stat.icon.name] || Users
             return (
-              <Card key={stat.title} className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+              <Card key={stat.title} className="border-none shadow-md hover:shadow-lg transition-all duration-300 min-h-[8rem]">
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start mb-4">
                     <div className={cn(
@@ -309,15 +397,15 @@ export default function DashboardPage() {
           </div>
 
           {aiLoading ? (
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-3 layout-stable">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse"></div>
+                <div key={i} className="min-h-[12rem] bg-slate-100 dark:bg-slate-800 rounded-2xl animate-pulse"></div>
               ))}
             </div>
           ) : aiPredictions ? (
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-3 layout-stable">
               {/* Enrollment Trends */}
-              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 min-h-[12rem]">
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <div className="p-2 bg-violet-100 text-violet-600 rounded-lg">
@@ -365,7 +453,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* Dropout Risk */}
-              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 min-h-[12rem]">
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <div className="p-2 bg-rose-100 text-rose-600 rounded-lg">
@@ -427,7 +515,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* Resource Optimization */}
-              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300">
+              <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 min-h-[12rem]">
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
@@ -491,9 +579,9 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
+        <div className="grid gap-8 lg:grid-cols-3 layout-stable">
           {/* Recent Activities */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 layout-stable">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Clock className="h-5 w-5 text-violet-500" />
@@ -508,7 +596,7 @@ export default function DashboardPage() {
               {data.recentActivities.map((activity) => {
                 const IconComponent = iconMap[activity.icon] || Clock
                 return (
-                  <div key={activity.id} className="group flex items-start gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-violet-200 dark:hover:border-violet-800 transition-all duration-300 shadow-sm hover:shadow-md">
+                  <div key={activity.id} className="group flex items-start gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-violet-200 dark:hover:border-violet-800 transition-all duration-300 shadow-sm hover:shadow-md min-h-[6rem]">
                     <div className={cn(
                       "p-3 rounded-xl shrink-0",
                       activity.type === 'student' && "bg-blue-100 text-blue-600",
@@ -546,9 +634,9 @@ export default function DashboardPage() {
           </div>
 
           {/* Right Sidebar */}
-          <div className="space-y-8">
+          <div className="space-y-8 layout-stable">
             {/* Quick Actions */}
-            <div className="rounded-3xl bg-slate-900 text-white p-6 shadow-xl">
+            <div className="rounded-3xl bg-slate-900 text-white p-6 shadow-xl min-h-[20rem]">
               <div className="flex items-center gap-2 mb-6">
                 <div className="p-2 bg-orange-500/20 rounded-lg">
                   <Sparkles className="h-5 w-5 text-orange-500" />
@@ -580,7 +668,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Highlights */}
-            <div className="space-y-4">
+            <div className="space-y-4 min-h-[35rem]">
               <h3 className="font-bold flex items-center gap-2 text-slate-900 dark:text-white">
                 <span className="p-1.5 rounded-lg bg-rose-100 text-rose-500">
                   <TrendingUp className="h-4 w-4" />
@@ -594,16 +682,16 @@ export default function DashboardPage() {
                 
                 return (
                   <div key={index} className={cn(
-                    "rounded-2xl p-5 border",
+                    "rounded-2xl p-5 border min-h-[7rem]",
                     colorClass === 'emerald' && "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800",
                     colorClass === 'violet' && "bg-violet-50 dark:bg-violet-900/10 border-violet-100 dark:border-violet-800",
                     colorClass === 'blue' && "bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800",
                     colorClass === 'orange' && "bg-orange-50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-800",
                   )}>
                     <div className="flex items-start justify-between mb-2">
-                      <div>
+                      <div className="min-h-[5rem]">
                         <p className={cn(
-                          "text-2xl font-bold",
+                          "text-2xl font-bold min-h-[2rem]",
                           colorClass === 'emerald' && "text-emerald-700 dark:text-emerald-400",
                           colorClass === 'violet' && "text-violet-700 dark:text-violet-400",
                           colorClass === 'blue' && "text-blue-700 dark:text-blue-400",
@@ -620,18 +708,18 @@ export default function DashboardPage() {
                         )}>
                           {highlight.title}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs text-slate-500 mt-1 min-h-[1rem]">
                           {highlight.description}
                         </p>
                       </div>
-                      <IconComponent className={cn(
-                        "h-5 w-5",
-                        colorClass === 'emerald' && "text-emerald-500",
-                        colorClass === 'violet' && "text-violet-500",
-                        colorClass === 'blue' && "text-blue-500",
-                        colorClass === 'orange' && "text-orange-500",
-                      )} />
                     </div>
+                    <IconComponent className={cn(
+                      "h-5 w-5",
+                      colorClass === 'emerald' && "text-emerald-500",
+                      colorClass === 'violet' && "text-violet-500",
+                      colorClass === 'blue' && "text-blue-500",
+                      colorClass === 'orange' && "text-orange-500",
+                    )} />
                   </div>
                 )
               })}

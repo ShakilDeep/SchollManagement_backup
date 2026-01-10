@@ -55,7 +55,6 @@ export const AttendanceRow = memo(({ student, onStatusChange, getStatusConfig }:
           setPattern(data)
         }
       } catch (error) {
-        console.error('Failed to fetch attendance pattern:', error)
       } finally {
         setLoading(false)
       }

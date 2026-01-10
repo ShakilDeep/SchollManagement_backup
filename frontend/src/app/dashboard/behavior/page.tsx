@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
+import { AddBehaviorDialog } from './components/add-behavior-dialog'
 import {
   Search,
   Plus,
@@ -73,15 +74,6 @@ export default function BehaviorPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [newRecord, setNewRecord] = useState({
-    studentId: '',
-    type: 'POSITIVE',
-    category: '',
-    description: '',
-    points: 0,
-    actionTaken: '',
-    parentNotified: false,
-  })
 
   useEffect(() => {
     fetchData()
@@ -110,37 +102,6 @@ export default function BehaviorPage() {
       toast({ title: 'Error', description: 'Failed to load data', variant: 'destructive' })
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAddRecord = async () => {
-    try {
-      const res = await fetch('/api/behavior', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newRecord,
-          reportedBy: 'admin',
-        }),
-      })
-
-      if (!res.ok) throw new Error('Failed to create record')
-
-      toast({ title: 'Success', description: 'Behavior record created' })
-      setIsAddDialogOpen(false)
-      setNewRecord({
-        studentId: '',
-        type: 'POSITIVE',
-        category: '',
-        description: '',
-        points: 0,
-        actionTaken: '',
-        parentNotified: false,
-      })
-      fetchData()
-    } catch (error) {
-      console.error(error)
-      toast({ title: 'Error', description: 'Failed to create record', variant: 'destructive' })
     }
   }
 
@@ -323,105 +284,12 @@ export default function BehaviorPage() {
           </CardContent>
         </Card>
 
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Behavior Record</DialogTitle>
-              <DialogDescription>Record a positive or negative behavior incident</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Student</Label>
-                <Select
-                  value={newRecord.studentId}
-                  onValueChange={(value) => setNewRecord({ ...newRecord, studentId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map((student) => (
-                      <SelectItem key={student.id} value={student.id}>
-                        {student.firstName} {student.lastName} ({student.rollNumber})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select
-                  value={newRecord.type}
-                  onValueChange={(value) => setNewRecord({ ...newRecord, type: value as 'POSITIVE' | 'NEGATIVE' })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="POSITIVE">Positive</SelectItem>
-                    <SelectItem value="NEGATIVE">Negative</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={newRecord.category}
-                  onValueChange={(value) => setNewRecord({ ...newRecord, category: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Academic">Academic</SelectItem>
-                    <SelectItem value="Behavioral">Behavioral</SelectItem>
-                    <SelectItem value="Discipline">Discipline</SelectItem>
-                    <SelectItem value="Attendance">Attendance</SelectItem>
-                    <SelectItem value="Social">Social</SelectItem>
-                    <SelectItem value="Leadership">Leadership</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  placeholder="Describe the behavior incident..."
-                  value={newRecord.description}
-                  onChange={(e) => setNewRecord({ ...newRecord, description: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Points</Label>
-                <Input
-                  type="number"
-                  placeholder="Enter points (positive or negative)"
-                  value={newRecord.points}
-                  onChange={(e) => setNewRecord({ ...newRecord, points: parseInt(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Action Taken</Label>
-                <Textarea
-                  placeholder="Describe any action taken..."
-                  value={newRecord.actionTaken}
-                  onChange={(e) => setNewRecord({ ...newRecord, actionTaken: e.target.value })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>Parent Notified</Label>
-                <Switch
-                  checked={newRecord.parentNotified}
-                  onCheckedChange={(checked) => setNewRecord({ ...newRecord, parentNotified: checked })}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAddRecord}>Add Record</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <AddBehaviorDialog
+          open={isAddDialogOpen}
+          onOpenChange={setIsAddDialogOpen}
+          students={students}
+          onSuccess={fetchData}
+        />
       </div>
     </DashboardLayout>
   )

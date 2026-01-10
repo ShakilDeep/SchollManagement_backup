@@ -40,7 +40,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { AddBookDialog } from './components/add-book-dialog'
+import { EditBookDialog } from './components/edit-book-dialog'
 import {
   Plus,
   Search,
@@ -318,85 +319,15 @@ export default function LibraryPage() {
               Track books, borrowings, and returns
             </p>
           </div>
-          <Dialog open={isAddBookOpen} onOpenChange={setIsAddBookOpen}>
-            <DialogTrigger asChild>
-              <Button className="h-10">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Book
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add New Book</DialogTitle>
-                <DialogDescription>
-                  Enter the book details to add it to the library
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Book Title *</Label>
-                  <Input id="title" placeholder="Enter book title" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="author">Author *</Label>
-                    <Input id="author" placeholder="Author name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="isbn">ISBN *</Label>
-                    <Input id="isbn" placeholder="978-0-00-000000-0" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Category *</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Computer Science">Computer Science</SelectItem>
-                        <SelectItem value="Programming">Programming</SelectItem>
-                        <SelectItem value="Science">Science</SelectItem>
-                        <SelectItem value="Mathematics">Mathematics</SelectItem>
-                        <SelectItem value="Literature">Literature</SelectItem>
-                        <SelectItem value="History">History</SelectItem>
-                        <SelectItem value="Geography">Geography</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="copies">Total Copies *</Label>
-                    <Input id="copies" type="number" placeholder="Number of copies" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location">Location *</Label>
-                  <Input id="location" placeholder="e.g., Shelf A-1" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="publisher">Publisher</Label>
-                  <Input id="publisher" placeholder="Publisher name" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="year">Publication Year</Label>
-                  <Input id="year" type="number" placeholder="2024" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea id="description" placeholder="Brief description of the book" />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddBookOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={() => setIsAddBookOpen(false)}>
-                  Add Book
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button className="h-10" onClick={() => setIsAddBookOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Book
+          </Button>
+          <AddBookDialog
+            open={isAddBookOpen}
+            onOpenChange={setIsAddBookOpen}
+            onSuccess={fetchBooks}
+          />
 
           <Dialog open={isViewDetailsOpen} onOpenChange={setIsViewDetailsOpen}>
             <DialogContent className="max-w-lg">
@@ -459,65 +390,12 @@ export default function LibraryPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isEditBookOpen} onOpenChange={setIsEditBookOpen}>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Edit Book</DialogTitle>
-                <DialogDescription>
-                  Update the book details
-                </DialogDescription>
-              </DialogHeader>
-              {selectedBook && (
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-title">Book Title</Label>
-                    <Input id="edit-title" defaultValue={selectedBook.title} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-author">Author</Label>
-                      <Input id="edit-author" defaultValue={selectedBook.author} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-isbn">ISBN</Label>
-                      <Input id="edit-isbn" defaultValue={selectedBook.isbn} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-category">Category</Label>
-                      <Select defaultValue={selectedBook.category}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Computer Science">Computer Science</SelectItem>
-                          <SelectItem value="Programming">Programming</SelectItem>
-                          <SelectItem value="Science">Science</SelectItem>
-                          <SelectItem value="Mathematics">Mathematics</SelectItem>
-                          <SelectItem value="Literature">Literature</SelectItem>
-                          <SelectItem value="History">History</SelectItem>
-                          <SelectItem value="Geography">Geography</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-copies">Total Copies</Label>
-                      <Input id="edit-copies" type="number" defaultValue={selectedBook.totalCopies} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-location">Location</Label>
-                    <Input id="edit-location" defaultValue={selectedBook.location} />
-                  </div>
-                </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditBookOpen(false)}>Cancel</Button>
-                <Button onClick={() => setIsEditBookOpen(false)}>Save Changes</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <EditBookDialog
+            open={isEditBookOpen}
+            onOpenChange={setIsEditBookOpen}
+            book={selectedBook}
+            onSuccess={fetchBooks}
+          />
 
           <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
             <DialogContent className="max-w-md">

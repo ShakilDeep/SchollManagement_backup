@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { studentFormSchema, type StudentFormData } from '@/lib/validations/student'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -18,66 +20,52 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { UserPlus } from 'lucide-react'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 
 interface AddStudentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (data: any) => Promise<{ success: boolean; error?: string }>
+  onSubmit: (data: StudentFormData) => Promise<{ success: boolean; error?: string }>
 }
 
 export default function AddStudentDialog({ open, onOpenChange, onSubmit }: AddStudentDialogProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    rollNumber: '',
-    gender: '',
-    grade: '',
-    section: '',
-    phone: '',
-    email: '',
-    guardianName: '',
-    relationship: '',
-    guardianPhone: '',
-    address: '',
-    medicalInfo: ''
+  const form = useForm<StudentFormData>({
+    resolver: zodResolver(studentFormSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      rollNumber: '',
+      gender: 'male',
+      grade: '',
+      section: '',
+      phone: '',
+      email: '',
+      guardianName: '',
+      relationship: '',
+      guardianPhone: '',
+      address: '',
+      medicalInfo: ''
+    }
   })
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    
-    const result = await onSubmit(formData)
+  const handleSubmit = async (data: StudentFormData) => {
+    const result = await onSubmit(data)
     
     if (result.success) {
-      setFormData({
-        firstName: '',
-        lastName: '',
-        rollNumber: '',
-        gender: '',
-        grade: '',
-        section: '',
-        phone: '',
-        email: '',
-        guardianName: '',
-        relationship: '',
-        guardianPhone: '',
-        address: '',
-        medicalInfo: ''
-      })
+      form.reset()
       onOpenChange(false)
     } else {
-      alert('Error adding student: ' + (result.error || 'Unknown error'))
+      form.setError('firstName', { type: 'manual', message: result.error || 'Unknown error' })
     }
-    
-    setIsSubmitting(false)
   }
 
   return (
@@ -89,151 +77,215 @@ export default function AddStudentDialog({ open, onOpenChange, onSubmit }: AddSt
             Register a new student in the system
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid gap-6 py-6">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+            <div className="grid gap-6 py-6">
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter first name" className="h-12 rounded-2xl" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter last name" className="h-12 rounded-2xl" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="rollNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Roll Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., 2024-007" className="h-12 rounded-2xl" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="gender"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Gender</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12 rounded-2xl">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="grade"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Grade</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12 rounded-2xl">
+                            <SelectValue placeholder="Select grade" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Grade 9">Grade 9</SelectItem>
+                          <SelectItem value="Grade 10">Grade 10</SelectItem>
+                          <SelectItem value="Grade 11">Grade 11</SelectItem>
+                          <SelectItem value="Grade 12">Grade 12</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="section"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Section</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12 rounded-2xl">
+                            <SelectValue placeholder="Select section" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="A">Section A</SelectItem>
+                          <SelectItem value="B">Section B</SelectItem>
+                          <SelectItem value="C">Section C</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone Number</FormLabel>
+                  <FormControl>
+                    <Input placeholder="+1 234-567-8900" className="h-12 rounded-2xl" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="student@example.com" className="h-12 rounded-2xl" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">First Name</Label>
-                <Input 
-                  placeholder="Enter first name" 
-                  className="h-12 rounded-2xl"
-                  value={formData.firstName}
-                  onChange={(e) => handleInputChange('firstName', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Last Name</Label>
-                <Input 
-                  placeholder="Enter last name" 
-                  className="h-12 rounded-2xl"
-                  value={formData.lastName}
-                  onChange={(e) => handleInputChange('lastName', e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Roll Number</Label>
-                <Input 
-                  placeholder="e.g., 2024-007" 
-                  className="h-12 rounded-2xl"
-                  value={formData.rollNumber}
-                  onChange={(e) => handleInputChange('rollNumber', e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Gender</Label>
-                <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
-                  <SelectTrigger className="h-12 rounded-2xl">
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Grade</Label>
-                <Select value={formData.grade} onValueChange={(value) => handleInputChange('grade', value)}>
-                  <SelectTrigger className="h-12 rounded-2xl">
-                    <SelectValue placeholder="Select grade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Grade 9">Grade 9</SelectItem>
-                    <SelectItem value="Grade 10">Grade 10</SelectItem>
-                    <SelectItem value="Grade 11">Grade 11</SelectItem>
-                    <SelectItem value="Grade 12">Grade 12</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Section</Label>
-                <Select value={formData.section} onValueChange={(value) => handleInputChange('section', value)}>
-                  <SelectTrigger className="h-12 rounded-2xl">
-                    <SelectValue placeholder="Select section" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A">Section A</SelectItem>
-                    <SelectItem value="B">Section B</SelectItem>
-                    <SelectItem value="C">Section C</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Phone Number</Label>
-              <Input 
-                placeholder="+1 234-567-8900" 
-                className="h-12 rounded-2xl"
-                value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
+              <FormField
+                control={form.control}
+                name="guardianName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Guardian Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Guardian's full name" className="h-12 rounded-2xl" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="relationship"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Relationship</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Father, Mother" className="h-12 rounded-2xl" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Email</Label>
-              <Input 
-                type="email" 
-                placeholder="student@example.com" 
-                className="h-12 rounded-2xl"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Guardian Name</Label>
-                <Input 
-                  placeholder="Guardian's full name" 
-                  className="h-12 rounded-2xl"
-                  value={formData.guardianName}
-                  onChange={(e) => handleInputChange('guardianName', e.target.value)}
-                />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Relationship</Label>
-                <Input 
-                  placeholder="e.g., Father, Mother" 
-                  className="h-12 rounded-2xl"
-                  value={formData.relationship}
-                  onChange={(e) => handleInputChange('relationship', e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Guardian Phone</Label>
-              <Input 
-                placeholder="+1 234-567-8900" 
-                className="h-12 rounded-2xl"
-                value={formData.guardianPhone}
-                onChange={(e) => handleInputChange('guardianPhone', e.target.value)}
-              />
-            </div>
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Address</Label>
-              <Textarea 
-                placeholder="Enter full address" 
-                className="min-h-[120px] rounded-2xl resize-none"
-                value={formData.address}
-                onChange={(e) => handleInputChange('address', e.target.value)}
-              />
-            </div>
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Medical Information</Label>
-              <Textarea 
-                placeholder="Any allergies, medical conditions, or special needs" 
-                className="min-h-[100px] rounded-2xl resize-none"
-                value={formData.medicalInfo}
-                onChange={(e) => handleInputChange('medicalInfo', e.target.value)}
-              />
-            </div>
-          </div>
+            <FormField
+              control={form.control}
+              name="guardianPhone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Guardian Phone</FormLabel>
+                  <FormControl>
+                    <Input placeholder="+1 234-567-8900" className="h-12 rounded-2xl" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Enter full address" className="min-h-[120px] rounded-2xl resize-none" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="medicalInfo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medical Information</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Any allergies, medical conditions, or special needs" className="min-h-[100px] rounded-2xl resize-none" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           <DialogFooter className="gap-3">
             <Button 
               type="button"
@@ -246,13 +298,14 @@ export default function AddStudentDialog({ open, onOpenChange, onSubmit }: AddSt
             <Button 
               type="submit"
               className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 rounded-2xl px-6 py-3 h-12 text-base font-semibold"
-              disabled={isSubmitting}
+              disabled={form.formState.isSubmitting}
             >
               <UserPlus className="mr-2 w-5 h-5" />
-              {isSubmitting ? 'Adding Student...' : 'Add Student'}
+              {form.formState.isSubmitting ? 'Adding Student...' : 'Add Student'}
             </Button>
           </DialogFooter>
-        </form>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

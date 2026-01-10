@@ -21,7 +21,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import {
   Select,
@@ -31,7 +30,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Plus,
   Search,
@@ -45,6 +43,8 @@ import {
   Loader2,
   Users
 } from 'lucide-react'
+import { AddStaffDialog } from './components/add-staff-dialog'
+import { EditStaffDialog } from './components/edit-staff-dialog'
 
 interface Staff {
   id: string
@@ -57,22 +57,6 @@ interface Staff {
   phone: string
   email: string
   joinDate: string
-}
-
-interface StaffFormData {
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  type: 'Teacher' | 'Staff'
-  department: string
-  designation: string
-  gender: string
-  dateOfBirth: string
-  qualification: string
-  address: string
-  experience: string
-  salary: string
 }
 
 export default function StaffPage() {
@@ -90,22 +74,6 @@ export default function StaffPage() {
   
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null)
   const [selectedStaffDetails, setSelectedStaffDetails] = useState<any>(null)
-  
-  const [formData, setFormData] = useState<StaffFormData>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    type: 'Teacher',
-    department: '',
-    designation: '',
-    gender: 'Male',
-    dateOfBirth: '',
-    qualification: '',
-    address: '',
-    experience: '',
-    salary: ''
-  })
   
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -173,21 +141,6 @@ export default function StaffPage() {
       }
       const data = await response.json()
       setSelectedStaffDetails(data)
-      setFormData({
-        firstName: data.firstName || '',
-        lastName: data.lastName || '',
-        email: data.email || '',
-        phone: data.phone || '',
-        type: data.type || 'Teacher',
-        department: data.department || '',
-        designation: data.designation || '',
-        gender: data.gender || 'Male',
-        dateOfBirth: data.dateOfBirth || '',
-        qualification: data.qualification || '',
-        address: data.address || '',
-        experience: data.experience ? data.experience.toString() : '',
-        salary: data.salary ? data.salary.toString() : ''
-      })
       setIsEditDialogOpen(true)
     } catch (err) {
       console.error('Error fetching staff details:', err)
@@ -205,102 +158,11 @@ export default function StaffPage() {
     setSelectedStaffDetails(null)
   }, [])
 
-  const handleCloseEditDialog = useCallback(() => {
-    setIsEditDialogOpen(false)
-    setSelectedStaff(null)
-    setSelectedStaffDetails(null)
-    setSubmitError(null)
-  }, [])
-
   const handleCloseDeleteDialog = useCallback(() => {
     setIsDeleteDialogOpen(false)
     setSelectedStaff(null)
     setSubmitError(null)
   }, [])
-
-  const resetAddForm = useCallback(() => {
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      type: 'Teacher',
-      department: '',
-      designation: '',
-      gender: 'Male',
-      dateOfBirth: '',
-      qualification: '',
-      address: '',
-      experience: '',
-      salary: ''
-    })
-    setSubmitError(null)
-  }, [])
-
-  const handleCloseAddDialog = useCallback(() => {
-    setIsAddDialogOpen(false)
-    resetAddForm()
-  }, [resetAddForm])
-
-  const handleAddStaff = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setSubmitError(null)
-    try {
-      const response = await fetch('/api/staff', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to add staff member')
-      }
-
-      await fetchStaff()
-      handleCloseAddDialog()
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to add staff member')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [formData, fetchStaff, handleCloseAddDialog])
-
-  const handleEditSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedStaff) return
-
-    setIsSubmitting(true)
-    setSubmitError(null)
-
-    try {
-      const response = await fetch(`/api/staff/${selectedStaff.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          status: selectedStaffDetails?.status,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update staff member')
-      }
-
-      await fetchStaff()
-      handleCloseEditDialog()
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to update staff member')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [selectedStaff, formData, selectedStaffDetails, fetchStaff, handleCloseEditDialog])
 
   const handleDeleteStaff = useCallback(async () => {
     if (!selectedStaff) return
@@ -362,217 +224,11 @@ export default function StaffPage() {
               Manage teachers, staff, and human resources
             </p>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-neutral-900 hover:bg-neutral-800">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Staff Member
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="text-lg font-semibold text-neutral-900">Add New Staff Member</DialogTitle>
-                <DialogDescription className="text-neutral-500 text-sm">
-                  Fill in the staff member's information to register them in the system
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddStaff}>
-                <div className="grid gap-6 py-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b border-neutral-200/80">
-                      <div className="h-0.5 w-4 bg-neutral-900 rounded-full" />
-                      <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wide">Personal Information</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="firstName" className="text-xs font-semibold text-neutral-600">First Name</Label>
-                        <Input
-                          id="firstName"
-                          value={formData.firstName}
-                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                          placeholder="Enter first name"
-                        required
-                        className="h-10 border-neutral-200/80"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName" className="text-xs font-medium text-neutral-600">Last Name *</Label>
-                      <Input
-                        id="lastName"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        placeholder="Enter last name"
-                        required
-                        className="h-10 border-neutral-200/80"
-                      />
-                    </div>
-                  </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="type" className="text-xs font-semibold text-neutral-600">Role Type</Label>
-                        <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as 'Teacher' | 'Staff' })}>
-                          <SelectTrigger className="h-10 border-neutral-200/80">
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Teacher">Teacher</SelectItem>
-                            <SelectItem value="Staff">Staff</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="department" className="text-xs font-semibold text-neutral-600">Department</Label>
-                        <Input
-                          id="department"
-                          value={formData.department}
-                          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                          placeholder="e.g., Mathematics, Science"
-                          required
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="phone" className="text-xs font-semibold text-neutral-600">Phone Number</Label>
-                        <Input
-                          id="phone"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          placeholder="+1 234-567-8900"
-                          required
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="text-xs font-semibold text-neutral-600">Email Address</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                          placeholder="staff@school.edu"
-                          required
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b border-neutral-200/80">
-                      <div className="h-0.5 w-4 bg-neutral-900 rounded-full" />
-                      <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wide">Additional Details</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="gender" className="text-xs font-semibold text-neutral-600">Gender</Label>
-                        <Select value={formData.gender} onValueChange={(value) => setFormData({ ...formData, gender: value })}>
-                          <SelectTrigger className="h-10 border-neutral-200/80">
-                            <SelectValue placeholder="Select gender" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Male">Male</SelectItem>
-                            <SelectItem value="Female">Female</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="dateOfBirth" className="text-xs font-semibold text-neutral-600">Date of Birth</Label>
-                        <Input
-                          id="dateOfBirth"
-                          type="date"
-                          value={formData.dateOfBirth}
-                          onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                          required
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="salary" className="text-xs font-semibold text-neutral-600">Annual Salary</Label>
-                        <Input
-                          id="salary"
-                          type="number"
-                          value={formData.salary}
-                          onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                          placeholder="Annual salary"
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                      {formData.type === 'Teacher' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="experience" className="text-xs font-semibold text-neutral-600">Experience (years)</Label>
-                          <Input
-                            id="experience"
-                            type="number"
-                            value={formData.experience}
-                            onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-                            placeholder="Years of experience"
-                            className="h-10 border-neutral-200/80"
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="qualification" className="text-xs font-semibold text-neutral-600">Qualification</Label>
-                        <Input
-                          id="qualification"
-                          value={formData.qualification}
-                          onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                          placeholder="e.g., M.Sc Mathematics, B.Ed"
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="designation" className="text-xs font-semibold text-neutral-600">Designation</Label>
-                        <Input
-                          id="designation"
-                          value={formData.designation}
-                          onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                          placeholder="e.g., Senior Teacher, Office Manager"
-                          required
-                          className="h-10 border-neutral-200/80"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="address" className="text-xs font-semibold text-neutral-600">Full Address</Label>
-                      <Textarea
-                        id="address"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        placeholder="Enter full address"
-                        className="border-neutral-200/80 resize-none"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                </div>
-                {submitError && (
-                  <div className="mb-4 text-sm text-neutral-900">{submitError}</div>
-                )}
-                <DialogFooter className="pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isSubmitting}
-                    onClick={handleCloseAddDialog}
-                    className="h-10 border-neutral-200/80"
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting} className="bg-neutral-900 hover:bg-neutral-800 h-10">
-                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Add Staff Member
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <AddStaffDialog
+            open={isAddDialogOpen}
+            onOpenChange={setIsAddDialogOpen}
+            onSuccess={fetchStaff}
+          />
         </div>
 
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -912,196 +568,35 @@ export default function StaffPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-neutral-900">Edit Staff Member</DialogTitle>
-            <DialogDescription className="text-neutral-600">
-              Update the information for {selectedStaffDetails?.firstName} {selectedStaffDetails?.lastName}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleEditSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="editFirstName">First Name *</Label>
-                  <Input
-                    id="editFirstName"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editLastName">Last Name *</Label>
-                  <Input
-                    id="editLastName"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="editType">Type *</Label>
-                  <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as 'Teacher' | 'Staff' })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Teacher">Teacher</SelectItem>
-                      <SelectItem value="Staff">Staff</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editDepartment">Department *</Label>
-                  <Input
-                    id="editDepartment"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editDesignation">Designation *</Label>
-                <Input
-                  id="editDesignation"
-                  value={formData.designation}
-                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="editPhone">Phone Number *</Label>
-                  <Input
-                    id="editPhone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editEmail">Email *</Label>
-                  <Input
-                    id="editEmail"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="editGender">Gender *</Label>
-                  <Select value={formData.gender} onValueChange={(value) => setFormData({ ...formData, gender: value })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editDateOfBirth">Date of Birth *</Label>
-                  <Input
-                    id="editDateOfBirth"
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="editSalary">Salary</Label>
-                  <Input
-                    id="editSalary"
-                    type="number"
-                    value={formData.salary}
-                    onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                    placeholder="Annual salary"
-                  />
-                </div>
-                {formData.type === 'Teacher' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="editExperience">Experience (years)</Label>
-                    <Input
-                      id="editExperience"
-                      type="number"
-                      value={formData.experience}
-                      onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-                      placeholder="Years of experience"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editQualification">Qualification</Label>
-                <Input
-                  id="editQualification"
-                  value={formData.qualification}
-                  onChange={(e) => setFormData({ ...formData, qualification: e.target.value })}
-                  placeholder="e.g., M.Sc Mathematics, B.Ed"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="editAddress">Address</Label>
-                <Textarea
-                  id="editAddress"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Enter full address"
-                />
-              </div>
-            </div>
-            {submitError && (
-              <div className="mb-4 text-sm text-neutral-900">{submitError}</div>
-            )}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isSubmitting}
-                onClick={handleCloseEditDialog}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-neutral-900 hover:bg-neutral-800">
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <EditStaffDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        staff={selectedStaffDetails}
+        onSuccess={fetchStaff}
+      />
 
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <Dialog open={isDeleteDialogOpen} onOpenChange={handleCloseDeleteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-neutral-900">Delete Staff Member</DialogTitle>
-            <DialogDescription className="text-neutral-600">
+            <DialogTitle>Delete Staff Member</DialogTitle>
+            <DialogDescription>
               Are you sure you want to delete {selectedStaff?.name}? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {submitError && (
+            <div className="text-sm text-red-600">{submitError}</div>
+          )}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              disabled={isSubmitting}
               onClick={handleCloseDeleteDialog}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
+              type="button"
               variant="destructive"
               onClick={handleDeleteStaff}
               disabled={isSubmitting}

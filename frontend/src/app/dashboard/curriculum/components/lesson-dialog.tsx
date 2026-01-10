@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -18,6 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
+import { lessonFormSchema, type LessonFormData } from '@/lib/validations/curriculum'
 
 type Lesson = {
   id: string
@@ -45,19 +49,10 @@ type Lesson = {
   }
 }
 
-type LessonForm = {
-  title: string
-  content: string
-  resources: string
-  date: string
-  duration: number
-  status: string
-}
-
 interface LessonDialogProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (form: LessonForm) => Promise<void>
+  onSave: (form: LessonFormData) => Promise<void>
   lesson: Lesson | null
   teachers: Array<{
     id: string
@@ -77,19 +72,21 @@ export function LessonDialog({
   lesson,
   teachers,
 }: LessonDialogProps) {
-  const [form, setForm] = useState<LessonForm>({
-    title: '',
-    content: '',
-    resources: '',
-    date: new Date().toISOString().split('T')[0],
-    duration: 60,
-    status: 'Planned',
+  const form = useForm<LessonFormData>({
+    resolver: zodResolver(lessonFormSchema),
+    defaultValues: {
+      title: '',
+      content: '',
+      resources: '',
+      date: new Date().toISOString().split('T')[0],
+      duration: 60,
+      status: 'Planned',
+    }
   })
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (isOpen && lesson) {
-      setForm({
+      form.reset({
         title: lesson.title,
         content: lesson.content || '',
         resources: lesson.resources || '',
@@ -98,7 +95,7 @@ export function LessonDialog({
         status: lesson.status,
       })
     } else if (isOpen) {
-      setForm({
+      form.reset({
         title: '',
         content: '',
         resources: '',
@@ -107,19 +104,15 @@ export function LessonDialog({
         status: 'Planned',
       })
     }
-  }, [isOpen, lesson])
+  }, [isOpen, lesson, form])
 
-  const handleSubmit = useCallback(async () => {
-    if (!form.title) return
-
-    setIsSubmitting(true)
+  const handleSubmit = useCallback(async (data: LessonFormData) => {
     try {
-      await onSave(form)
+      await onSave(data)
+      form.reset()
       onClose()
     } catch (error) {
       console.error('Error saving lesson:', error)
-    } finally {
-      setIsSubmitting(false)
     }
   }, [form, onSave, onClose])
 
@@ -129,79 +122,128 @@ export function LessonDialog({
         <DialogHeader>
           <DialogTitle>{lesson ? 'Edit Lesson' : 'Add New Lesson'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Lesson Title</label>
-            <Input
-              placeholder="e.g., Introduction to Variables"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Lesson Title</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="e.g., Introduction to Variables"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Content</label>
-            <Textarea
-              placeholder="Lesson content and description..."
-              value={form.content}
-              onChange={(e) => setForm({ ...form, content: e.target.value })}
-              rows={4}
+            <FormField
+              control={form.control}
+              name="content"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Content</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={4}
+                      placeholder="Lesson content and description..."
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Resources</label>
-            <Textarea
-              placeholder="Links, files, or other resources..."
-              value={form.resources}
-              onChange={(e) => setForm({ ...form, resources: e.target.value })}
-              rows={2}
+            <FormField
+              control={form.control}
+              name="resources"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Resources</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={2}
+                      placeholder="Links, files, or other resources..."
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Date</label>
-              <Input
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel>Date</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="duration"
+                render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel>Duration (minutes)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 60)}
+                        min={1}
+                        max={180}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Duration (minutes)</label>
-              <Input
-                type="number"
-                value={form.duration}
-                onChange={(e) => setForm({ ...form, duration: parseInt(e.target.value) || 60 })}
-                min={1}
-                max={180}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Status</label>
-            <Select
-              value={form.status}
-              onValueChange={(value) => setForm({ ...form, status: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Planned">Planned</SelectItem>
-                <SelectItem value="Scheduled">Scheduled</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? (lesson ? 'Updating...' : 'Creating...') : (lesson ? 'Update' : 'Create')}
-          </Button>
-        </DialogFooter>
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Planned">Planned</SelectItem>
+                      <SelectItem value="Scheduled">Scheduled</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={form.formState.isSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? (lesson ? 'Updating...' : 'Creating...') : (lesson ? 'Update' : 'Create')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

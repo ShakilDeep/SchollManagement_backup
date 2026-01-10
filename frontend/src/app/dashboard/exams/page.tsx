@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import {
   Dialog,
@@ -51,10 +51,9 @@ import {
   Eye,
   Settings,
   Bell,
-  AlertCircle,
-  X,
-  Loader2
+  AlertCircle
 } from 'lucide-react'
+import { CreateExamDialog } from './components/create-exam-dialog'
 
 interface Exam {
   id: string
@@ -133,29 +132,15 @@ export default function ExamsPage() {
   const [showCreateExamModal, setShowCreateExamModal] = useState(false)
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [selectedExamForDetails, setSelectedExamForDetails] = useState<Exam | null>(null)
-  const [newExam, setNewExam] = useState({
-    name: '',
-    type: 'Final',
-    startDate: '',
-    endDate: '',
-    description: ''
-  })
-  const [examPapers, setExamPapers] = useState<any[]>([])
-  const [subjects, setSubjects] = useState<any[]>([])
-  const [grades, setGrades] = useState<any[]>([])
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false)
-  const [isLoadingGrades, setIsLoadingGrades] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const startDateRef = useRef<HTMLInputElement>(null)
-  const endDateRef = useRef<HTMLInputElement>(null)
-  const nameRef = useRef<HTMLInputElement>(null)
-  const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const [examFilter, setExamFilter] = useState({
     type: 'All',
     status: 'All'
   })
   const [activeTab, setActiveTab] = useState('exams')
+  const [subjects, setSubjects] = useState<any[]>([])
+  const [grades, setGrades] = useState<any[]>([])
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false)
+  const [isLoadingGrades, setIsLoadingGrades] = useState(false)
 
   const fetchExams = useCallback(async () => {
     try {
@@ -265,118 +250,16 @@ export default function ExamsPage() {
   }, [])
 
   const handleCreateExam = useCallback(() => {
-    setNewExam({
-      name: '',
-      type: 'Final',
-      startDate: '',
-      endDate: '',
-      description: ''
-    })
     setShowCreateExamModal(true)
   }, [])
 
   const handleCloseCreateExamModal = useCallback(() => {
     setShowCreateExamModal(false)
-    setNewExam({
-      name: '',
-      type: 'Final',
-      startDate: '',
-      endDate: '',
-      description: ''
-    })
-    setExamPapers([])
-    setSubmitError(null)
   }, [])
 
   const handleCloseFilterModal = useCallback(() => {
     setShowFilterModal(false)
   }, [])
-
-  const handleAddPaper = useCallback(() => {
-    setExamPapers([
-      ...examPapers,
-      {
-        subjectId: '',
-        gradeId: '',
-        totalMarks: 100,
-        passingMarks: 40,
-        duration: 120,
-        examDate: '',
-        startTime: '',
-        endTime: ''
-      }
-    ])
-  }, [examPapers])
-
-  const handleRemovePaper = useCallback((index: number) => {
-    setExamPapers(examPapers.filter((_, i) => i !== index))
-  }, [examPapers])
-
-  const handlePaperChange = useCallback((index: number, field: string, value: any) => {
-    const updatedPapers = [...examPapers]
-    updatedPapers[index] = {
-      ...updatedPapers[index],
-      [field]: value
-    }
-    setExamPapers(updatedPapers)
-  }, [examPapers])
-
-  const handleCreateExamSubmit = useCallback(async () => {
-    setIsSubmitting(true)
-    setSubmitError(null)
-
-    try {
-      const finalName = newExam.name || (nameRef.current?.value || '')
-      const finalStartDate = newExam.startDate || (startDateRef.current?.value || '')
-      const finalEndDate = newExam.endDate || (endDateRef.current?.value || '')
-      const finalDescription = newExam.description || (descriptionRef.current?.value || '')
-      
-      if (!finalName) {
-        setSubmitError('Exam name is required')
-        setIsSubmitting(false)
-        return
-      }
-      
-      if (!finalStartDate || !finalEndDate) {
-        setSubmitError('Start date and end date are required')
-        setIsSubmitting(false)
-        return
-      }
-
-      const examToSubmit = {
-        name: finalName,
-        type: newExam.type,
-        startDate: finalStartDate,
-        endDate: finalEndDate,
-        description: finalDescription,
-        papers: examPapers.length > 0 ? examPapers : undefined
-      }
-      
-      const response = await fetch('/api/exams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(examToSubmit),
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create exam')
-      }
-
-      const data = await response.json()
-      
-      await fetchExams()
-      
-      handleCloseCreateExamModal()
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Failed to create exam')
-      console.error('Failed to create exam:', error)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [newExam, examPapers, fetchExams, handleCloseCreateExamModal])
 
   const handleExportResults = useCallback(async () => {
     try {
@@ -1049,273 +932,11 @@ export default function ExamsPage() {
       </DialogContent>
     </Dialog>
 
-    {/* Create Exam Modal */}
-    <Dialog open={showCreateExamModal} onOpenChange={setShowCreateExamModal}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Create New Exam
-          </DialogTitle>
-          <DialogDescription>
-            Create a new examination schedule with associated papers
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-6">
-          {/* Exam Details Section */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Exam Details</h3>
-            <div className="space-y-2">
-              <Label htmlFor="exam-name">Exam Name</Label>
-              <Input
-                id="exam-name"
-                ref={nameRef}
-                value={newExam.name}
-                onChange={(e) => setNewExam({...newExam, name: e.target.value})}
-                placeholder="e.g., Final Examination 2025"
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="exam-type">Exam Type</Label>
-              <Select value={newExam.type} onValueChange={(value) => setNewExam({...newExam, type: value})}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Mid-term">Mid-term</SelectItem>
-                  <SelectItem value="Final">Final</SelectItem>
-                  <SelectItem value="Quiz">Quiz</SelectItem>
-                  <SelectItem value="Assignment">Assignment</SelectItem>
-                  <SelectItem value="Practical">Practical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start Date</Label>
-                <Input
-                  id="start-date"
-                  ref={startDateRef}
-                  type="date"
-                  value={newExam.startDate}
-                  onChange={(e) => setNewExam({...newExam, startDate: e.target.value})}
-                  className="w-full"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="end-date">End Date</Label>
-                <Input
-                  id="end-date"
-                  ref={endDateRef}
-                  type="date"
-                  value={newExam.endDate}
-                  onChange={(e) => setNewExam({...newExam, endDate: e.target.value})}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="exam-description">Description</Label>
-              <Textarea
-                id="exam-description"
-                ref={descriptionRef}
-                value={newExam.description}
-                onChange={(e) => setNewExam({...newExam, description: e.target.value})}
-                placeholder="Enter exam description and details..."
-                className="w-full"
-                rows={3}
-              />
-            </div>
-          </div>
-
-          {/* Exam Papers Section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Exam Papers</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleAddPaper}
-                className="flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Paper
-              </Button>
-            </div>
-            
-            {examPapers.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
-                <FileText className="h-12 w-12 text-slate-400 mx-auto mb-3" />
-                <p className="text-sm text-slate-600 dark:text-slate-400">No papers added yet</p>
-                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Click "Add Paper" to create exam papers</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {examPapers.map((paper, index) => (
-                  <Card key={index} className="border-slate-200 dark:border-slate-700">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-medium">Paper {index + 1}</CardTitle>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemovePaper(index)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-subject-${index}`}>Subject</Label>
-                          <Select
-                            value={paper.subjectId}
-                            onValueChange={(value) => handlePaperChange(index, 'subjectId', value)}
-                          >
-                            <SelectTrigger id={`paper-subject-${index}`}>
-                              <SelectValue placeholder="Select subject" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {isLoadingSubjects ? (
-                                <div className="flex items-center justify-center p-4">
-                                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                                </div>
-                              ) : subjects.length === 0 ? (
-                                <div className="text-center p-4 text-sm text-slate-500">No subjects available</div>
-                              ) : (
-                                subjects.map((subject) => (
-                                  <SelectItem key={subject.id} value={subject.id}>
-                                    {subject.name} ({subject.code})
-                                  </SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-grade-${index}`}>Grade</Label>
-                          <Select
-                            value={paper.gradeId}
-                            onValueChange={(value) => handlePaperChange(index, 'gradeId', value)}
-                          >
-                            <SelectTrigger id={`paper-grade-${index}`}>
-                              <SelectValue placeholder="Select grade" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {isLoadingGrades ? (
-                                <div className="flex items-center justify-center p-4">
-                                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                                </div>
-                              ) : grades.length === 0 ? (
-                                <div className="text-center p-4 text-sm text-slate-500">No grades available</div>
-                              ) : (
-                                grades.map((grade) => (
-                                  <SelectItem key={grade.id} value={grade.id}>
-                                    {grade.name}
-                                  </SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-total-marks-${index}`}>Total Marks</Label>
-                          <Input
-                            id={`paper-total-marks-${index}`}
-                            type="number"
-                            value={paper.totalMarks}
-                            onChange={(e) => handlePaperChange(index, 'totalMarks', parseInt(e.target.value))}
-                            placeholder="100"
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-passing-marks-${index}`}>Passing Marks</Label>
-                          <Input
-                            id={`paper-passing-marks-${index}`}
-                            type="number"
-                            value={paper.passingMarks}
-                            onChange={(e) => handlePaperChange(index, 'passingMarks', parseInt(e.target.value))}
-                            placeholder="40"
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-duration-${index}`}>Duration (min)</Label>
-                          <Input
-                            id={`paper-duration-${index}`}
-                            type="number"
-                            value={paper.duration}
-                            onChange={(e) => handlePaperChange(index, 'duration', parseInt(e.target.value))}
-                            placeholder="120"
-                            className="w-full"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-date-${index}`}>Exam Date</Label>
-                          <Input
-                            id={`paper-date-${index}`}
-                            type="date"
-                            value={paper.examDate}
-                            onChange={(e) => handlePaperChange(index, 'examDate', e.target.value)}
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`paper-start-time-${index}`}>Start Time</Label>
-                          <Input
-                            id={`paper-start-time-${index}`}
-                            type="time"
-                            value={paper.startTime}
-                            onChange={(e) => handlePaperChange(index, 'startTime', e.target.value)}
-                            className="w-full"
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {submitError && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg text-sm">
-            {submitError}
-          </div>
-        )}
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCloseCreateExamModal} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleCreateExamSubmit}
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              'Create Exam'
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <CreateExamDialog
+      open={showCreateExamModal}
+      onOpenChange={setShowCreateExamModal}
+      onSuccess={fetchExams}
+    />
 
     {/* Filter Modal */}
     <Dialog open={showFilterModal} onOpenChange={(open) => {

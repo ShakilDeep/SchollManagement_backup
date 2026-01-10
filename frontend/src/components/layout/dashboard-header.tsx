@@ -16,7 +16,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const [isDark, setIsDark] = useState(false)
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 layout-stable h-16">
       <div className="flex h-16 items-center justify-between px-6 lg:px-8">
         {/* Left Section */}
         <div className="flex items-center gap-4 flex-1">
@@ -31,7 +31,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
 
           {/* Search Bar */}
           <div className={cn(
-            'relative flex-1 max-w-xl transition-all duration-300',
+            'relative flex-1 max-w-xl layout-stable',
             searchFocused ? 'max-w-2xl' : 'max-w-xl'
           )}>
             <Search className={cn(

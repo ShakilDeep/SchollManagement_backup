@@ -92,7 +92,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
     <>
       {/* Desktop Sidebar */}
       <aside className={cn(
-        'hidden lg:flex fixed left-0 top-0 h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-r border-slate-800/50 transition-all duration-300 z-20',
+        'hidden lg:flex fixed left-0 top-0 h-screen flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-r border-slate-800/50 layout-stable z-20',
         isCollapsed ? 'w-20' : 'w-72'
       )}>
         {/* Logo Section */}
