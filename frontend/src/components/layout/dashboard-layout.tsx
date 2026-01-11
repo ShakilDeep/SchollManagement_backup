@@ -19,9 +19,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       
       {/* Main Content Area */}
       <div className={cn(
-        'relative z-10 w-full overflow-x-hidden',
-        'lg:ml-72',
-        sidebarCollapsed && 'lg:ml-20'
+        'relative z-10 overflow-x-hidden',
+        'w-full lg:w-[calc(100%-18rem)] lg:ml-72',
+        sidebarCollapsed && 'lg:w-[calc(100%-5rem)] lg:ml-20'
       )}>
         <DashboardHeader onMenuClick={() => setSidebarCollapsed(!sidebarCollapsed)} />
         <main className="p-6 lg:p-8">
