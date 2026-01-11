@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { formatCurrency } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -613,7 +614,7 @@ export default function HostelPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-purple-100 text-sm font-medium">Monthly Revenue</p>
-                  <p className="text-3xl font-bold mt-2">₹{stats.monthlyRevenue.toLocaleString()}</p>
+                  <p className="text-3xl font-bold mt-2">{formatCurrency(stats.monthlyRevenue)}</p>
                   <p className="text-xs text-purple-200 mt-2">
                     From {stats.totalStudents} students
                   </p>
@@ -822,7 +823,7 @@ export default function HostelPage() {
                       {allocation.fees && (
                         <div className="flex items-center gap-2 text-slate-600">
                           <CreditCard className="w-4 h-4" />
-                          <span>₹{allocation.fees.toLocaleString()}/month</span>
+                          <span>{formatCurrency(allocation.fees)}/month</span>
                         </div>
                       )}
                     </div>
@@ -961,7 +962,7 @@ export default function HostelPage() {
                   {selectedAllocation.fees && (
                     <div>
                       <Label>Monthly Fees</Label>
-                      <p className="font-semibold">₹{selectedAllocation.fees.toLocaleString()}</p>
+                      <p className="font-semibold">{formatCurrency(selectedAllocation.fees)}</p>
                     </div>
                   )}
                 </div>

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { useInventoryPrediction } from '@/hooks/use-inventory-prediction'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { InventoryPredictionBadge } from '@/components/inventory/inventory-prediction-badge'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { MoreVertical, Eye, Edit, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -101,10 +101,3 @@ export const InventoryRow = memo(({ asset, onEdit, onView, onDelete, getConditio
 })
 
 InventoryRow.displayName = 'InventoryRow'
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(value)
-}

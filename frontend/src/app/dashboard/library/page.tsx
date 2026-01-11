@@ -42,6 +42,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { AddBookDialog } from './components/add-book-dialog'
 import { EditBookDialog } from './components/edit-book-dialog'
+import { formatCurrency } from '@/lib/utils'
 import {
   Plus,
   Search,
@@ -752,7 +753,7 @@ export default function LibraryPage() {
                       <TableCell>{getStatusBadge(borrowal.status)}</TableCell>
                       <TableCell className="text-right">
                         <span className={borrowal.fine > 0 ? 'text-red-600 font-semibold' : ''}>
-                          ${borrowal.fine.toFixed(2)}
+                          {formatCurrency(borrowal.fine)}
                         </span>
                       </TableCell>
                     </TableRow>

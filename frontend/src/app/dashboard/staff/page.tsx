@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { formatCurrency } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -544,7 +545,7 @@ export default function StaffPage() {
                 <div className="space-y-1">
                   <Label className="text-neutral-600">Salary</Label>
                   <p className="text-neutral-900">
-                    ${Number(selectedStaffDetails.salary).toLocaleString()}/year
+                    {formatCurrency(Number(selectedStaffDetails.salary))}/year
                   </p>
                 </div>
               )}
