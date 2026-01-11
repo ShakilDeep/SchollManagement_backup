@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getResourceConfigByPlural } from '@/lib/api/base/resource-configs'
+import { getResourceConfigByPlural, getResourceConfig } from '@/lib/api/base/resource-configs'
 import { createCRUDRoute } from '@/lib/api/base/crud-factory'
 import { db } from '@/lib/db'
 

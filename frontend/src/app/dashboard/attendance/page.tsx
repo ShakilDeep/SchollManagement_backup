@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useAttendance, useAttendanceStats, useGrades, useSections, useSaveAttendance } from '@/lib/api/hooks/use-attendance'
 
-const AttendanceRow = lazy(() => import('./components/attendance-row').then(m => ({ default: m.AttendanceRow })))
+import { AttendanceRow } from './components/attendance-row'
 const StatsCard = lazy(() => import('./components/stats-card').then(m => ({ default: m.StatsCard })))
 const AttendanceLoadingSkeleton = lazy(() => import('./components/attendance-loading-skeleton').then(m => ({ default: m.AttendanceLoadingSkeleton })))
 
@@ -562,6 +562,7 @@ export default function AttendancePage() {
                       <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Status</TableHead>
                       <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Check In</TableHead>
                       <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Check Out</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">AI Prediction (Tomorrow)</TableHead>
                       <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -572,19 +573,18 @@ export default function AttendancePage() {
                       </Suspense>
                     ) : localAttendanceData.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center text-slate-500">
-                          No students found
-                        </TableCell>
+                        <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                      No students found
+                    </TableCell>
                       </TableRow>
                     ) : (
                       localAttendanceData.map((student) => (
-                        <Suspense key={student.id} fallback={null}>
-                          <AttendanceRow
-                            student={student}
-                            onStatusChange={handleStatusChange}
-                            getStatusConfig={getStatusConfig}
-                          />
-                        </Suspense>
+                        <AttendanceRow
+                          key={student.id}
+                          student={student}
+                          onStatusChange={handleStatusChange}
+                          getStatusConfig={getStatusConfig}
+                        />
                       ))
                     )}
                   </TableBody>

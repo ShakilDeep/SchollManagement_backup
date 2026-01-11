@@ -26,7 +26,7 @@ export class StudentPerformanceService {
 
   constructor() {
     this.client = new GeminiClient('gemini-2.0-flash', {
-      temperature: 0.3,
+      temperature: 0.4,
       maxOutputTokens: 2048
     })
   }

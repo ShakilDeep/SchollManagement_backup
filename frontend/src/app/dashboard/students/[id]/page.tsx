@@ -24,10 +24,10 @@ export default function StudentDetailsPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const isEditMode = searchParams.get('action') === 'edit'
-  
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+
   // Form State
   const [formData, setFormData] = useState<any>(null)
 
@@ -37,8 +37,13 @@ export default function StudentDetailsPage() {
         if (params.id) {
           const res = await fetch(`/api/students/${params.id}`)
           if (!res.ok) throw new Error('Student not found')
-          const data = await res.json()
-          setFormData(data)
+          const result = await res.json()
+          // API returns { success: true, data: {...} }
+          if (result.success && result.data) {
+            setFormData(result.data)
+          } else {
+            setFormData(null)
+          }
         }
       } catch (error) {
         console.error(error)
@@ -52,35 +57,35 @@ export default function StudentDetailsPage() {
 
   const handleSave = async () => {
     try {
-        setSaving(true)
-        const res = await fetch(`/api/students/${params.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                firstName: formData.name.split(' ')[0], // Simple split for now
-                lastName: formData.name.split(' ').slice(1).join(' '),
-                rollNumber: formData.rollNumber,
-                grade: formData.grade,
-                section: formData.section,
-                phone: formData.phone,
-                email: formData.email,
-                address: formData.address,
-                // Add other fields as needed
-            })
+      setSaving(true)
+      const res = await fetch(`/api/students/${params.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: formData.name.split(' ')[0], // Simple split for now
+          lastName: formData.name.split(' ').slice(1).join(' '),
+          rollNumber: formData.rollNumber,
+          grade: formData.grade,
+          section: formData.section,
+          phone: formData.phone,
+          email: formData.email,
+          address: formData.address,
+          // Add other fields as needed
         })
+      })
 
-        if (!res.ok) throw new Error('Failed to update')
-        
-        const updated = await res.json()
-        setFormData(updated)
-        toast.success('Student updated successfully')
-        router.push(`/dashboard/students/${params.id}`) // Exit edit mode
-        router.refresh()
+      if (!res.ok) throw new Error('Failed to update')
+
+      const updated = await res.json()
+      setFormData(updated)
+      toast.success('Student updated successfully')
+      router.push(`/dashboard/students/${params.id}`) // Exit edit mode
+      router.refresh()
     } catch (error) {
-        console.error(error)
-        toast.error('Failed to update student')
+      console.error(error)
+      toast.error('Failed to update student')
     } finally {
-        setSaving(false)
+      setSaving(false)
     }
   }
 
@@ -145,11 +150,10 @@ export default function StudentDetailsPage() {
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">{formData.name}</h2>
               <p className="text-slate-500 dark:text-slate-400 mb-4">{formData.rollNumber}</p>
               <div className="flex gap-2">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  formData.status === 'Active' 
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${formData.status === 'Active'
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
                     : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                }`}>
+                  }`}>
                   {formData.status}
                 </span>
                 <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400">
@@ -169,20 +173,20 @@ export default function StudentDetailsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Full Name</Label>
-                    <Input 
-                        value={formData.name} 
-                        onChange={(e) => handleChange('name', e.target.value)}
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => handleChange('name', e.target.value)}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Roll Number</Label>
-                    <Input 
-                        value={formData.rollNumber} 
-                        onChange={(e) => handleChange('rollNumber', e.target.value)}
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.rollNumber}
+                      onChange={(e) => handleChange('rollNumber', e.target.value)}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                   <div className="space-y-2">
@@ -232,70 +236,70 @@ export default function StudentDetailsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Email Address</Label>
-                    <Input 
-                        value={formData.email} 
-                        onChange={(e) => handleChange('email', e.target.value)}
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.email}
+                      onChange={(e) => handleChange('email', e.target.value)}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Phone Number</Label>
-                    <Input 
-                        value={formData.phone} 
-                        onChange={(e) => handleChange('phone', e.target.value)}
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.phone}
+                      onChange={(e) => handleChange('phone', e.target.value)}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Guardian Name</Label>
-                    <Input 
-                        value={formData.guardian} 
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.guardian}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Admission Date</Label>
-                    <Input 
-                        value={formData.admissionDate} 
-                        readOnly={!isEditMode} 
-                        className={!isEditMode ? "bg-slate-50 border-none" : ""} 
+                    <Input
+                      value={formData.admissionDate}
+                      readOnly={!isEditMode}
+                      className={!isEditMode ? "bg-slate-50 border-none" : ""}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Address</Label>
-                  <Textarea 
-                    value={formData.address} 
+                  <Textarea
+                    value={formData.address}
                     onChange={(e) => handleChange('address', e.target.value)}
-                    readOnly={!isEditMode} 
-                    className={!isEditMode ? "bg-slate-50 border-none resize-none" : "resize-none"} 
+                    readOnly={!isEditMode}
+                    className={!isEditMode ? "bg-slate-50 border-none resize-none" : "resize-none"}
                   />
                 </div>
               </CardContent>
             </Card>
 
-            {isEditMode && (
+            {isEditMode && formData && (
               <div className="flex justify-end gap-4">
-                <Link href={`/dashboard/students/${formData.id}`}>
+                <Link href={`/dashboard/students/${params.id}`}>
                   <Button variant="outline" type="button" disabled={saving}>Cancel</Button>
                 </Link>
-                <Button 
-                    onClick={handleSave} 
-                    disabled={saving}
-                    className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
                 >
                   <Save className="mr-2 h-4 w-4" />
                   {saving ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             )}
-            {!isEditMode && (
+            {!isEditMode && formData && (
               <div className="flex justify-end">
-                <Link href={`/dashboard/students/${formData.id}?action=edit`}>
-                   <Button className="bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600">
+                <Link href={`/dashboard/students/${params.id}?action=edit`}>
+                  <Button className="bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600">
                     Edit Profile
                   </Button>
                 </Link>

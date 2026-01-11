@@ -88,7 +88,7 @@ export const AIPredictionBadge = memo(({ prediction, loading, size = 'sm' }: AIP
           <TrendingUp className="w-3 h-3" />
           <span>Predicted: {prediction.predictedGrade}</span>
           <span className="text-slate-300">•</span>
-          <span>{Math.round(prediction.confidence * 100)}% confidence</span>
+          <span className="font-bold">{Math.round(prediction.confidence * 100)}% confidence</span>
         </div>
       )}
     </div>

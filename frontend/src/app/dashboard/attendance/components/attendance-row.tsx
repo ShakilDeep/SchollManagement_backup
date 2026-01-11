@@ -1,8 +1,10 @@
 'use client'
 
-import { memo, useState, useEffect } from 'react'
+import { memo, useState, useEffect, useMemo } from 'react'
+import { addDays } from 'date-fns'
 import { CheckCircle, XCircle, Clock, Timer, AlertCircle, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { useAttendancePrediction } from '@/hooks/use-attendance-prediction'
 import {
   Select,
   SelectContent,
@@ -13,6 +15,7 @@ import {
 import { cn } from '@/lib/utils'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { AttendanceAlertsBadge, AbsencePattern } from './attendance-alerts-badge'
+import { AttendancePredictionBadge } from '@/components/attendance/attendance-prediction-badge'
 
 interface StudentAttendance {
   id: string
@@ -44,6 +47,17 @@ export const AttendanceRow = memo(({ student, onStatusChange, getStatusConfig }:
   const StatusIcon = statusConfig.icon
   const [pattern, setPattern] = useState<AbsencePattern | undefined>()
   const [loading, setLoading] = useState(false)
+  const today = useMemo(() => {
+    const date = new Date()
+    date.setHours(0, 0, 0, 0)
+    return date
+  }, [])
+  const tomorrow = useMemo(() => {
+    const date = new Date(today)
+    date.setDate(today.getDate() + 1)
+    return date
+  }, [today])
+  const { data: prediction, isLoading: predictionLoading } = useAttendancePrediction(student.id, tomorrow)
 
   useEffect(() => {
     const fetchPattern = async () => {
@@ -149,6 +163,9 @@ export const AttendanceRow = memo(({ student, onStatusChange, getStatusConfig }:
         <div className="text-sm text-slate-600 dark:text-slate-400">
           {student.checkOut || '-'}
         </div>
+      </TableCell>
+      <TableCell>
+        <AttendancePredictionBadge prediction={prediction} isLoading={predictionLoading} />
       </TableCell>
       <TableCell>
         {loading ? (

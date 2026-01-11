@@ -438,7 +438,7 @@ export class StudentPredictionService {
 
     const baseConfidence = (dataScore * 0.4) + (consistencyScore * 0.3) + (spanScore * 0.3)
 
-    return Math.min(0.95, Math.max(0.6, baseConfidence))
+    return Math.min(0.95, baseConfidence)
   }
 
   generateRecommendations(

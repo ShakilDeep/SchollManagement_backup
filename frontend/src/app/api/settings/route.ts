@@ -37,7 +37,7 @@ const defaultSettings: SystemSettings = {
   academicYearId: '',
   timezone: 'UTC',
   dateFormat: 'DD/MM/YYYY',
-  currency: 'USD',
+  currency: 'BDT',
   enableNotifications: true,
   enableSMS: false,
   enableEmail: true,

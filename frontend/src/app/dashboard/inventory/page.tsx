@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { formatCurrency } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,21 +31,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Plus,
   Search,
-  MoreVertical,
-  Eye,
-  Edit,
-  Trash2,
   Filter,
   Package,
   DollarSign,
@@ -53,8 +44,10 @@ import {
   Clock,
   Loader2,
   TrendingUp,
-  ArrowUpRight
+  ArrowUpRight,
+  Brain
 } from 'lucide-react'
+import { InventoryRow } from './components/inventory-row'
 
 interface Asset {
   id: string
@@ -638,7 +631,7 @@ export default function InventoryPage() {
             <CardHeader className="pb-2 pt-4 px-4">
               <CardTitle className="text-xs font-semibold text-neutral-600 mb-1">Total Value</CardTitle>
               <div className="flex items-baseline gap-2">
-                <div className="text-3xl font-bold text-teal-900">${stats.totalValue.toLocaleString()}</div>
+                <div className="text-3xl font-bold text-teal-900">{formatCurrency(stats.totalValue)}</div>
                 <DollarSign className="h-4 w-4 text-teal-500" />
               </div>
             </CardHeader>
@@ -705,6 +698,7 @@ export default function InventoryPage() {
                     <TableHead className="w-[120px] font-semibold text-neutral-700 text-xs uppercase tracking-wide">Status</TableHead>
                     <TableHead className="w-[120px] font-semibold text-neutral-700 text-xs uppercase tracking-wide">Location</TableHead>
                     <TableHead className="w-[100px] font-semibold text-neutral-700 text-xs uppercase tracking-wide text-right">Value</TableHead>
+                    <TableHead className="w-[200px] font-semibold text-neutral-700 text-xs uppercase tracking-wide">AI Prediction</TableHead>
                     <TableHead className="w-[60px] font-semibold text-neutral-700 text-xs uppercase tracking-wide text-center"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -722,65 +716,17 @@ export default function InventoryPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    assets.map((asset) => {
-                      const statusBgClass = asset.status === 'Available' 
-                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20' 
-                        : asset.status === 'InUse' 
-                        ? 'bg-blue-50/40 dark:bg-blue-950/20' 
-                        : 'bg-amber-50/40 dark:bg-amber-950/20'
-                      const statusBorderClass = asset.status === 'Available' 
-                        ? 'border-l-emerald-400' 
-                        : asset.status === 'InUse' 
-                        ? 'border-l-blue-400' 
-                        : 'border-l-amber-400'
-                      
-                      return (
-                        <TableRow 
-                          key={asset.id} 
-                          className={`hover:bg-neutral-50/60 dark:hover:bg-neutral-900/20 transition-colors border-l-4 ${statusBorderClass} ${statusBgClass}`}
-                        >
-                          <TableCell className="font-mono text-xs font-semibold text-neutral-700">{asset.assetCode}</TableCell>
-                          <TableCell>
-                            <div className="space-y-0.5">
-                              <div className="font-medium text-neutral-900">{asset.name}</div>
-                              {asset.serialNumber && (
-                                <div className="text-[11px] text-neutral-500 font-mono">{asset.serialNumber}</div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-neutral-600 text-sm">{asset.category}</TableCell>
-                          <TableCell>{getConditionBadge(asset.condition)}</TableCell>
-                          <TableCell>{getStatusBadge(asset.status)}</TableCell>
-                          <TableCell className="text-neutral-600 text-sm">{asset.location || '-'}</TableCell>
-                          <TableCell className="text-neutral-600 text-sm text-right font-medium">
-                            {asset.currentValue ? `$${asset.currentValue.toLocaleString()}` : '-'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-neutral-500 hover:text-neutral-900">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleView(asset)}>
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEdit(asset)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit Asset
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDelete(asset)} className="text-red-600 focus:text-red-600">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Asset
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
+                    assets.map((asset) => (
+                      <InventoryRow
+                        key={asset.id}
+                        asset={asset}
+                        onEdit={handleEdit}
+                        onView={handleView}
+                        onDelete={handleDelete}
+                        getConditionBadge={getConditionBadge}
+                        getStatusBadge={getStatusBadge}
+                      />
+                    ))
                   )}
                 </TableBody>
               </Table>
@@ -837,13 +783,13 @@ export default function InventoryPage() {
                 <div className="space-y-2">
                   <Label className="text-xs font-medium uppercase text-slate-500">Purchase Price</Label>
                   <div className="text-lg font-semibold text-slate-900">
-                    {selectedAssetDetails.purchasePrice ? `$${selectedAssetDetails.purchasePrice.toLocaleString()}` : '-'}
+                    {selectedAssetDetails.purchasePrice ? formatCurrency(selectedAssetDetails.purchasePrice) : '-'}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium uppercase text-slate-500">Current Value</Label>
                   <div className="text-lg font-semibold text-slate-900">
-                    {selectedAssetDetails.currentValue ? `$${selectedAssetDetails.currentValue.toLocaleString()}` : '-'}
+                    {selectedAssetDetails.currentValue ? formatCurrency(selectedAssetDetails.currentValue) : '-'}
                   </div>
                 </div>
               </div>
