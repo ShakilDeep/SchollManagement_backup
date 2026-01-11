@@ -32,7 +32,13 @@ export async function POST(request: NextRequest) {
       historicalAttendance,
       historicalPerformance,
       libraryTransactions,
-      examResultsForPerformance
+      examResultsForPerformance,
+      teacherPerformance,
+      courses,
+      subjects,
+      examResultsBySubject,
+      attendanceRecordsByStudent,
+      grades
     ] = await Promise.all([
       db.student.count(),
       db.teacher.count({ where: { status: 'Active' } }),
@@ -128,6 +134,42 @@ export async function POST(request: NextRequest) {
           }
         },
         orderBy: { examPaper: { examDate: 'desc' } }
+      }),
+      db.teacher.findMany({
+        where: { status: 'Active' }
+      }),
+      db.course.findMany({
+        where: { isPublished: true }
+      }),
+      db.subject.findMany(),
+      db.examResult.findMany({
+        include: {
+          examPaper: {
+            include: {
+              subject: true,
+              grade: true
+            }
+          },
+          student: true
+        },
+        orderBy: { examPaper: { examDate: 'desc' } },
+        take: 500
+      }),
+      db.attendance.groupBy({
+        by: ['studentId', 'status'],
+        where: {
+          date: {
+            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+          }
+        },
+        _count: true
+      }),
+      db.grade.findMany({
+        include: {
+          students: {
+            where: { status: 'Active' }
+          }
+        }
       })
     ])
 
@@ -259,7 +301,56 @@ export async function POST(request: NextRequest) {
           advanced: 0
         }
       },
-      studentPerformanceData
+      studentPerformanceData,
+      teacherData: {
+        teachers: teacherPerformance.map(t => {
+          const teacherCourses = courses.filter(c => c.teacherId === t.id)
+          const subjectIds = teacherCourses.map(c => c.subjectId)
+          const subjectNames = subjects.filter(s => subjectIds.includes(s.id)).map(s => s.name)
+          return {
+            id: t.id,
+            name: `${t.firstName} ${t.lastName}`,
+            subjects: subjectNames,
+            experience: t.experience || 0
+          }
+        }),
+        totalActiveTeachers: teacherPerformance.length
+      },
+      examDataBySubject: examResultsBySubject.reduce((acc, result) => {
+        const subject = result.examPaper.subject?.name || 'Unknown'
+        const grade = result.examPaper.grade
+        const percentage = (result.marksObtained / result.examPaper.totalMarks) * 100
+        if (!acc[subject]) {
+          acc[subject] = { total: 0, sum: 0, grades: {} as Record<string, { total: number; sum: number }> }
+        }
+        acc[subject].total += 1
+        acc[subject].sum += percentage
+        if (grade) {
+          if (!acc[subject].grades[grade]) {
+            acc[subject].grades[grade] = { total: 0, sum: 0 }
+          }
+          acc[subject].grades[grade].total += 1
+          acc[subject].grades[grade].sum += percentage
+        }
+        return acc
+      }, {} as Record<string, { total: number; sum: number; grades: Record<string, { total: number; sum: number }> }>),
+      attendanceByStudent: attendanceRecordsByStudent.reduce((acc, record) => {
+        if (!acc[record.studentId]) {
+          acc[record.studentId] = { total: 0, present: 0, absent: 0 }
+        }
+        acc[record.studentId].total += record._count
+        if (record.status === 'Present') {
+          acc[record.studentId].present += record._count
+        } else {
+          acc[record.studentId].absent += record._count
+        }
+        return acc
+      }, {} as Record<string, { total: number; present: number; absent: number }>),
+      gradesData: grades.map(g => ({
+        id: g.id,
+        name: g.name,
+        studentCount: g.students.length
+      }))
     }
 
     const predictions = await dashboardPredictionService.generateDashboardPredictions(dashboardData)

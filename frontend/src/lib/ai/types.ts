@@ -5,17 +5,58 @@ export interface DashboardPrediction {
     nextYear: number
     trend: 'increasing' | 'stable' | 'decreasing'
     confidence: number
+    keyFactors?: string[]
+    recommendations?: string[]
   }
   dropoutRisk: {
     highRiskStudents: number
     mediumRiskStudents: number
     lowRiskStudents: number
     riskFactors: string[]
+    interventionStrategies?: string[]
+    earlyWarningIndicators?: string[]
   }
   resourceOptimization: {
     teacherAllocation: string[]
     classroomUtilization: string[]
     resourceRecommendations: string[]
+  }
+  performancePredictions: {
+    nextWeekAverage: number
+    nextMonthAverage: number
+    topPerformingGrades: Array<{ grade: string; average: number }>
+    gradesNeedingAttention: Array<{ grade: string; average: number; improvement: string }>
+    subjectInsights: Array<{ subject: string; average: number; trend: 'improving' | 'stable' | 'declining' }>
+    performanceDrivers?: string[]
+    interventionRecommendations?: string[]
+  }
+  attendancePatterns: {
+    todayPrediction: { present: number; absent: number; rate: number }
+    weeklyTrend: Array<{ day: string; rate: number }>
+    predictedNextWeek: number
+    patternInsights: string[]
+    atRiskStudents: number
+    attendanceDrivers?: string[]
+    improvementStrategies?: string[]
+  }
+  teacherEffectiveness: {
+    topTeachers: Array<{ name: string; effectiveness: number; subject: string }>
+    teachersNeedingSupport: Array<{ name: string; effectiveness: number; suggestions: string[] }>
+    overallEffectiveness: number
+    effectivenessFactors?: string[]
+    professionalDevelopmentNeeds?: string[]
+    collaborationOpportunities?: string[]
+  }
+  alerts: Array<{
+    type: 'urgent' | 'warning' | 'info'
+    title: string
+    message: string
+    action?: string
+  }>
+  insights: {
+    keyHighlights: string[]
+    opportunities: string[]
+    priorities: Array<{ title: string; urgency: 'high' | 'medium' | 'low' }>
   }
 }
 

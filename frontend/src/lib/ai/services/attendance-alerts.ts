@@ -138,47 +138,69 @@ export class AttendanceAlertsService {
   }
 
   async loadGradeAttendanceRecords(gradeId: string, sectionId?: string, days: number = 30): Promise<AttendanceRecord[]> {
+    const cacheKey = `grade_attendance_${gradeId}_${sectionId || 'all'}_${days}`
+    const cached = this.getCachedData(cacheKey)
+    if (cached) return cached
+
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
-    const where: any = {
-      date: {
-        gte: startDate,
-        lte: new Date()
-      }
-    }
-
-    const attendances = await db.attendance.findMany({
-      where,
-      include: {
-        student: {
-          include: {
-            section: {
-              include: {
-                grade: true
-              }
+    const [attendances, students] = await Promise.all([
+      db.attendance.findMany({
+        where: {
+          date: {
+            gte: startDate,
+            lte: new Date()
+          },
+          student: {
+            gradeId,
+            ...(sectionId ? { sectionId } : {})
+          }
+        },
+        select: {
+          id: true,
+          studentId: true,
+          date: true,
+          status: true,
+          checkInTime: true,
+          checkOutTime: true,
+          student: {
+            select: {
+              firstName: true,
+              lastName: true
             }
           }
-        }
-      },
-      orderBy: {
-        date: 'desc'
-      },
-      take: 2000
-    })
+        },
+        orderBy: {
+          date: 'desc'
+        },
+        take: 2000
+      }),
+      db.student.findMany({
+        where: {
+          gradeId,
+          ...(sectionId ? { sectionId } : {})
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true
+        },
+        take: 1000
+      })
+    ])
 
-    const records: AttendanceRecord[] = attendances
-      .filter(a => a.student.section.gradeId === gradeId && (!sectionId || a.student.sectionId === sectionId))
-      .map(a => ({
-        id: a.id,
-        studentId: a.studentId,
-        studentName: `${a.student.firstName} ${a.student.lastName}`,
-        date: a.date,
-        status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
-        checkIn: a.checkInTime?.toISOString(),
-        checkOut: a.checkOutTime?.toISOString()
-      }))
+    const records: AttendanceRecord[] = attendances.map(a => ({
+      id: a.id,
+      studentId: a.studentId,
+      studentName: `${a.student.firstName} ${a.student.lastName}`,
+      date: a.date,
+      status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
+      checkIn: a.checkInTime?.toISOString(),
+      checkOut: a.checkOutTime?.toISOString()
+    }))
 
+    this.setCachedData(cacheKey, records)
     return records
   }
 

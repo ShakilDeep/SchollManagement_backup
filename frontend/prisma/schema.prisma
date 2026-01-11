@@ -89,6 +89,10 @@ model Student {
   @@index([rollNumber])
   @@index([gradeId])
   @@index([academicYearId])
+  @@index([sectionId])
+  @@index([gradeId, sectionId])
+  @@index([status])
+  @@index([firstName, lastName])
 }
 
 model Grade {
@@ -154,6 +158,9 @@ model Attendance {
   @@unique([studentId, date])
   @@index([date])
   @@index([status])
+  @@index([studentId])
+  @@index([date, status])
+  @@index([studentId, date])
 }
 
 model Timetable {
@@ -235,6 +242,7 @@ model ExamResult {
   @@unique([studentId, examPaperId])
   @@index([studentId])
   @@index([examPaperId])
+  @@index([percentage])
 }
 
 model Teacher {
@@ -361,6 +369,9 @@ model LibraryBorrowal {
 
   @@index([studentId])
   @@index([status])
+  @@index([studentId, status])
+  @@index([bookId])
+  @@index([dueDate])
 }
 
 model Vehicle {

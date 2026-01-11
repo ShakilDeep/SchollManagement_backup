@@ -129,27 +129,48 @@ export class SmartChatbotService {
     const cached = this.getCachedData<SchoolContext['studentData']>(cacheKey)
     if (cached) return cached
 
-    const [student, attendances, examResults, upcomingExams] = await Promise.all([
-      db.student.findUnique({
-        where: { id: studentId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          grade: { select: { name: true } },
-          section: { select: { name: true } }
-        }
-      }),
+    const student = await db.student.findUnique({
+      where: { id: studentId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        gradeId: true,
+        grade: { select: { name: true } },
+        section: { select: { name: true } }
+      }
+    })
+
+    if (!student) {
+      throw new Error('Student not found')
+    }
+
+    const [attendances, examResults, upcomingExams] = await Promise.all([
       db.attendance.findMany({
         where: { studentId },
+        select: {
+          id: true,
+          studentId: true,
+          date: true,
+          status: true,
+          checkInTime: true,
+          checkOutTime: true
+        },
         orderBy: { date: 'desc' },
         take: 90
       }),
       db.examResult.findMany({
         where: { studentId },
-        include: {
+        select: {
+          id: true,
+          marksObtained: true,
+          percentage: true,
+          grade: true,
+          remarks: true,
+          rank: true,
           examPaper: {
-            include: {
+            select: {
+              totalMarks: true,
               subject: { select: { name: true } }
             }
           }
@@ -160,14 +181,12 @@ export class SmartChatbotService {
       db.examPaper.findMany({
         where: {
           exam: { status: 'Upcoming' },
-          exam: {
-            gradeId: (await db.student.findUnique({
-              where: { id: studentId },
-              select: { gradeId: true }
-            }))?.gradeId
-          }
+          exam: { gradeId: student.gradeId }
         },
-        include: { subject: { select: { name: true } } },
+        select: {
+          examDate: true,
+          subject: { select: { name: true } }
+        },
         orderBy: { examDate: 'asc' },
         take: 5
       })
