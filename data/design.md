@@ -125,7 +125,8 @@ async generateRecommendations(studentId: string) {
   const [student, borrowingHistory, availableBooks] = await Promise.all([
     // Query student profile
     prisma.student.findUnique({
-      where: { id: studentId },
+      where: { id: studentId }
+      ,
       select: { grade: true, section: true }
     }),
     // Query borrowing history

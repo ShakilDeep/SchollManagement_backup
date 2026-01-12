@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar, Clock, BookOpen, Users, AlertTriangle, TrendingUp, Download, Filter, Bell, MapPin, Activity } from 'lucide-react'
+import { Calendar, Clock, BookOpen, Users, AlertTriangle, TrendingUp, Download, Filter, Bell, MapPin, Activity, Brain } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import TimetableSkeleton from './components/timetable-skeleton'
+import AIPredictionsCard from './components/ai-predictions-card'
 const SubjectCard = lazy(() => import('./components/subject-card'))
 
 interface Period {
@@ -33,16 +34,87 @@ interface GradeSection {
   }>
 }
 
+// AI Predictions interface
+interface TimetablePrediction {
+  sectionId: string
+  sectionName: string
+  optimalSchedule: {
+    recommendedChanges: Array<{
+      type: 'move' | 'swap' | 'add' | 'remove'
+      description: string
+      impact: 'high' | 'medium' | 'low'
+    }>
+    bestDay: string
+    bestPeriod: number
+    peakPerformanceWindow: string
+  }
+  teacherEffectiveness: Array<{
+    teacherName: string
+    averageScore: number
+    classCount: number
+    topSubjects: string[]
+    improvementSuggestions: string[]
+  }>
+  subjectDistribution: Array<{
+    subject: string
+    totalPeriods: number
+    averageScore: number
+    difficulty: string
+    recommendedPeriods: string[]
+  }>
+  conflictAnalysis: {
+    hasConflicts: boolean
+    conflicts: Array<{
+      day: string
+      period: number
+      description: string
+      severity: 'high' | 'medium' | 'low'
+      resolution: string
+    }>
+  }
+  studyLoadAnalysis: {
+    dailyLoad: Array<{
+      day: string
+      totalPeriods: number
+      averageDifficulty: number
+      recommendation: string
+    }>
+    heavyDays: string[]
+    lightDays: string[]
+    balanceScore: number
+  }
+  performanceInsights: {
+    correlation: number
+    insights: Array<{
+      pattern: string
+      impact: string
+      recommendation: string
+    }>
+  }
+  alerts: Array<{
+    type: 'warning' | 'info' | 'success'
+    message: string
+    priority: 'high' | 'medium' | 'low'
+  }>
+  generatedAt: Date
+}
+
 export default function TimetablePage() {
   const [grade, setGrade] = useState('10')
   const [section, setSection] = useState('A')
   const [viewType, setViewType] = useState<'weekly' | 'daily' | 'grid'>('weekly')
   const [selectedDay, setSelectedDay] = useState('Monday')
+  const [showPredictions, setShowPredictions] = useState(false)
 
   // State for dropdown data
   const [grades, setGrades] = useState<GradeSection[]>([])
   const [timetableData, setTimetableData] = useState<Period[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // AI Predictions state
+  const [aiPredictions, setAiPredictions] = useState<TimetablePrediction | null>(null)
+  const [predictionsLoading, setPredictionsLoading] = useState(false)
+  const [currentSectionId, setCurrentSectionId] = useState<string | null>(null)
   
   const classKey = `${grade}-${section}`
 
@@ -66,6 +138,15 @@ export default function TimetablePage() {
             const defaultSection = defaultGrade.sections.find((s: any) => s.id === sectionsData.defaultSelection.section)
             if (defaultSection) {
               setSection(defaultSection.name)
+              setCurrentSectionId(defaultSection.id)
+            }
+          }
+        } else {
+          const currentGrade = sectionsData.grades.find((g: GradeSection) => g.name === `Grade ${grade}`)
+          if (currentGrade) {
+            const currentSection = currentGrade.sections.find((s: any) => s.name === section)
+            if (currentSection) {
+              setCurrentSectionId(currentSection.id)
             }
           }
         }
@@ -82,9 +163,34 @@ export default function TimetablePage() {
     }
   }, [grade, section])
 
+  const fetchPredictions = useCallback(async (sectionId: string) => {
+    try {
+      setPredictionsLoading(true)
+      const response = await fetch(`/api/timetable/predictions?sectionId=${sectionId}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setAiPredictions(data)
+      } else {
+        setAiPredictions(null)
+      }
+    } catch (error) {
+      console.error('Error fetching predictions:', error)
+      setAiPredictions(null)
+    } finally {
+      setPredictionsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    if (currentSectionId && showPredictions) {
+      fetchPredictions(currentSectionId)
+    }
+  }, [currentSectionId, showPredictions, fetchPredictions])
 
   const statistics = useMemo(() => {
     const totalPeriods = timetableData.length
@@ -138,6 +244,16 @@ export default function TimetablePage() {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* AI Predictions Toggle */}
+          <Button
+            variant={showPredictions ? "default" : "outline"}
+            onClick={() => setShowPredictions(!showPredictions)}
+            className="flex items-center gap-2"
+          >
+            <Brain className="h-4 w-4" />
+            <span className="hidden sm:inline">AI Insights</span>
+          </Button>
+          
           {/* View Type Selector */}
           <Select value={viewType} onValueChange={(value: 'weekly' | 'daily' | 'grid') => setViewType(value)}>
             <SelectTrigger className="w-40">
@@ -226,6 +342,14 @@ export default function TimetablePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Predictions Section */}
+      {showPredictions && (
+        <AIPredictionsCard 
+          predictions={aiPredictions} 
+          isLoading={predictionsLoading}
+        />
+      )}
 
       {/* Current Period Indicator */}
       {currentPeriod && (

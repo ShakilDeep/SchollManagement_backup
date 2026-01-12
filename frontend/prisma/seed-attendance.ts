@@ -3,8 +3,34 @@ import { startOfDay, endOfDay, subDays, format } from 'date-fns'
 
 const prisma = new PrismaClient()
 
+// Generate consistent attendance patterns for each student
+function getStudentAttendancePattern(studentIndex: number, dayIndex: number): string {
+  // Create varied patterns for different students
+  const patterns = [
+    // Pattern 0: Excellent attendance (95% present)
+    ['Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present',
+      'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Late'],
+    // Pattern 1: Good attendance (85% present)
+    ['Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'Absent', 'Present', 'Late',
+      'Present', 'Present', 'Present', 'Present', 'Present', 'Present', 'HalfDay', 'Present', 'Present', 'Present'],
+    // Pattern 2: Average attendance (75% present)
+    ['Present', 'Present', 'Absent', 'Present', 'Present', 'Late', 'Present', 'Present', 'Absent', 'Present',
+      'Present', 'Present', 'HalfDay', 'Present', 'Present', 'Absent', 'Present', 'Late', 'Present', 'Present'],
+    // Pattern 3: Poor attendance (60% present) - at risk
+    ['Present', 'Absent', 'Present', 'Absent', 'Present', 'Late', 'Absent', 'Present', 'Present', 'Absent',
+      'HalfDay', 'Present', 'Absent', 'Present', 'Late', 'Present', 'Absent', 'Present', 'Absent', 'Present'],
+    // Pattern 4: Irregular with Monday absences
+    ['Absent', 'Present', 'Present', 'Present', 'Present', 'Absent', 'Present', 'Present', 'Present', 'Late',
+      'Absent', 'Present', 'Present', 'Present', 'Present', 'Absent', 'Present', 'Present', 'Present', 'Present'],
+  ]
+
+  const patternIndex = studentIndex % patterns.length
+  const pattern = patterns[patternIndex]
+  return pattern[dayIndex % pattern.length]
+}
+
 async function main() {
-  console.log('Start seeding attendance data...')
+  console.log('Start seeding extended attendance data (60 days)...')
 
   const students = await prisma.student.findMany({
     where: { status: 'Active' }
@@ -18,44 +44,67 @@ async function main() {
 
   const markedBy = adminUser?.id || 'cmk5xc4xt0011vqu49ighb5a6'
 
-  const statuses = ['Present', 'Present', 'Present', 'Present', 'Present', 'Absent', 'Late', 'HalfDay']
-
   let totalRecords = 0
+  let skippedRecords = 0
 
-  for (let i = 6; i >= 0; i--) {
+  // Generate 60 days of historical data
+  for (let i = 60; i >= 0; i--) {
     const date = subDays(new Date(), i)
     const dateStart = startOfDay(date)
-    const dateEnd = endOfDay(date)
 
     const dayName = format(date, 'EEEE')
-    
+
+    // Skip Sundays
     if (dayName === 'Sunday') {
-      console.log(`Skipping ${dayName}, ${format(date, 'yyyy-MM-dd')}`)
       continue
     }
 
     console.log(`Seeding attendance for ${dayName}, ${format(date, 'yyyy-MM-dd')}`)
 
-    for (const student of students) {
-      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)]
-      
-      const checkInTime = randomStatus === 'Absent' ? null : new Date(date)
-      const checkOutTime = randomStatus === 'Absent' ? null : new Date(date)
+    for (let studentIdx = 0; studentIdx < students.length; studentIdx++) {
+      const student = students[studentIdx]
+      const status = getStudentAttendancePattern(studentIdx, 60 - i)
+
+      const checkInTime = status === 'Absent' ? null : new Date(date)
+      const checkOutTime = status === 'Absent' ? null : new Date(date)
 
       if (checkInTime) {
-        checkInTime.setHours(8 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0)
+        // Present: 8:00-8:30, Late: 8:45-9:30, HalfDay: 11:00-12:00
+        if (status === 'Present') {
+          checkInTime.setHours(8, Math.floor(Math.random() * 30), 0)
+        } else if (status === 'Late') {
+          checkInTime.setHours(8, 45 + Math.floor(Math.random() * 45), 0)
+        } else if (status === 'HalfDay') {
+          checkInTime.setHours(11, Math.floor(Math.random() * 60), 0)
+        }
       }
-      
+
       if (checkOutTime && checkInTime) {
-        checkOutTime.setHours(checkInTime.getHours() + 6 + Math.floor(Math.random() * 2))
+        if (status === 'HalfDay') {
+          checkOutTime.setHours(13, Math.floor(Math.random() * 60))
+        } else {
+          checkOutTime.setHours(14 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60))
+        }
       }
 
       try {
-        await prisma.attendance.create({
-          data: {
+        await prisma.attendance.upsert({
+          where: {
+            studentId_date: {
+              studentId: student.id,
+              date: dateStart
+            }
+          },
+          update: {
+            status,
+            checkInTime,
+            checkOutTime,
+            markedBy,
+          },
+          create: {
             studentId: student.id,
             date: dateStart,
-            status: randomStatus,
+            status,
             checkInTime,
             checkOutTime,
             markedBy,
@@ -63,12 +112,12 @@ async function main() {
         })
         totalRecords++
       } catch (error) {
-        console.log(`Record already exists for student ${student.rollNumber} on ${format(date, 'yyyy-MM-dd')}`)
+        skippedRecords++
       }
     }
   }
 
-  console.log(`Seeding finished. Created ${totalRecords} attendance records.`)
+  console.log(`Seeding finished. Created/updated ${totalRecords} attendance records, skipped ${skippedRecords}.`)
 }
 
 main()
@@ -79,3 +128,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
+
