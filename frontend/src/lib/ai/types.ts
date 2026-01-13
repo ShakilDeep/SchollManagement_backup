@@ -222,3 +222,136 @@ export interface InventoryPrediction {
   }
   generatedAt: Date
 }
+
+export interface LibraryPrediction {
+  overallHealth: {
+    score: number
+    status: 'excellent' | 'good' | 'fair' | 'poor'
+    totalBooks: number
+    totalCopies: number
+    collectionValue: number
+    averageBookAge: number
+  }
+  popularBooks: {
+    trendingBooks: Array<{
+      isbn: string
+      title: string
+      author: string
+      category: string
+      borrowCount: number
+      availableCopies: number
+      recommendation: string
+    }>
+    highDemandCategories: Array<{
+      category: string
+      borrowCount: number
+      totalBooks: number
+      demandTrend: 'increasing' | 'stable' | 'decreasing'
+    }>
+    seasonalityInsights: string[]
+  }
+  stockAlerts: {
+    outOfStockBooks: Array<{
+      isbn: string
+      title: string
+      author: string
+      category: string
+      totalCopies: number
+      recommendation: string
+      urgency: 'high' | 'medium' | 'low'
+    }>
+    lowStockBooks: Array<{
+      isbn: string
+      title: string
+      author: string
+      category: string
+      availableCopies: number
+      recommendedReorder: number
+    }>
+    needRestocking: boolean
+    estimatedRestockCost: number
+  }
+  borrowingPatterns: {
+    averageLoanDuration: number
+    peakBorrowingTimes: Array<{
+      day: string
+      time: string
+      borrowCount: number
+    }>
+    overdueTrend: 'increasing' | 'stable' | 'decreasing'
+    averageReturnDelay: number
+    frequentBorrowers: Array<{
+      studentName: string
+      rollNumber: string
+      borrowCount: number
+      overdueCount: number
+    }>
+    borrowingFrequency: string
+  }
+  acquisitionRecommendations: {
+    recommendedPurchases: Array<{
+      title: string
+      author: string
+      category: string
+      estimatedCost: number
+      reason: string
+      priority: 'high' | 'medium' | 'low'
+    }>
+    categoriesToExpand: Array<{
+      category: string
+      currentBooks: number
+      demandGap: number
+      suggestedAdditions: number
+    }>
+    totalBudgetRequired: number
+    budgetBreakdown: Record<string, number>
+  }
+  categoryPerformance: {
+    topPerforming: Array<{
+      category: string
+      totalBooks: number
+      borrowRate: number
+      averageRating: number
+      recommendations: string[]
+    }>
+    underperforming: Array<{
+      category: string
+      totalBooks: number
+      borrowRate: number
+      improvementSuggestions: string[]
+    }>
+    diversificationOpportunities: string[]
+  }
+  spaceUtilization: {
+    shelfUsage: number
+    overcrowdedCategories: Array<{
+      category: string
+      bookCount: number
+      availableSpace: string
+      recommendation: string
+    }>
+    underutilizedAreas: Array<{
+      location: string
+      currentUsage: number
+      potentialCapacity: number
+    }>
+    reorganizationSuggestions: string[]
+  }
+  alerts: Array<{
+    type: 'urgent' | 'warning' | 'info'
+    title: string
+    message: string
+    action?: string
+    priority: 'high' | 'medium' | 'low'
+  }>
+  insights: {
+    keyHighlights: string[]
+    opportunities: string[]
+    priorities: Array<{
+      title: string
+      urgency: 'high' | 'medium' | 'low'
+      impact: 'high' | 'medium' | 'low'
+    }>
+  }
+  generatedAt: Date
+}

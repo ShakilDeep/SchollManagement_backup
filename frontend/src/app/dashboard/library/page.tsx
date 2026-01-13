@@ -42,6 +42,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { AddBookDialog } from './components/add-book-dialog'
 import { EditBookDialog } from './components/edit-book-dialog'
+import LibraryPredictionsCard from './components/ai-predictions-card'
 import { formatCurrency } from '@/lib/utils'
 import {
   Plus,
@@ -147,6 +148,8 @@ export default function LibraryPage() {
   const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
   const [selectedStudentId, setSelectedStudentId] = useState('')
+  const [predictions, setPredictions] = useState<any>(null)
+  const [predictionsLoading, setPredictionsLoading] = useState(false)
 
   const fetchBooks = useCallback(async () => {
     try {
@@ -208,10 +211,25 @@ export default function LibraryPage() {
     }
   }, [fetchStudentByRollNumber])
 
+  const fetchPredictions = useCallback(async () => {
+    setPredictionsLoading(true)
+    try {
+      const response = await fetch('/api/library/predictions')
+      if (!response.ok) throw new Error('Failed to fetch predictions')
+      const data = await response.json()
+      setPredictions(data)
+    } catch (error) {
+      console.error('Error fetching predictions:', error)
+    } finally {
+      setPredictionsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchBooks()
     fetchBorrowals()
-  }, [fetchBooks, fetchBorrowals])
+    fetchPredictions()
+  }, [fetchBooks, fetchBorrowals, fetchPredictions])
 
   const calculateStats = useCallback((booksData: Book[]) => {
     const totalBooks = booksData.reduce((acc, b) => acc + b.totalCopies, 0)
@@ -471,6 +489,11 @@ export default function LibraryPage() {
             </CardContent>
           </Card>
         </div>
+
+        <LibraryPredictionsCard 
+          predictions={predictions}
+          isLoading={predictionsLoading}
+        />
 
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader>
