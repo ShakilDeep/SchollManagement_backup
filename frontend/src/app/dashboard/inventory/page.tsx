@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatCurrency } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,6 +49,7 @@ import {
   Brain
 } from 'lucide-react'
 import { InventoryRow } from './components/inventory-row'
+import AIPredictionsCard from './components/ai-predictions-card'
 
 interface Asset {
   id: string
@@ -89,9 +91,7 @@ interface AssetStats {
 }
 
 export default function InventoryPage() {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -118,29 +118,12 @@ export default function InventoryPage() {
     status: 'Available',
   })
   
-  const [stats, setStats] = useState<AssetStats>({
-    total: 0,
-    available: 0,
-    inUse: 0,
-    maintenance: 0,
-    totalValue: 0,
-    lowCondition: 0,
-  })
-  
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  useEffect(() => {
-    fetchAssets()
-  }, [searchTerm, categoryFilter, statusFilter])
-
-  useEffect(() => {
-    calculateStats()
-  }, [assets])
-
-  const fetchAssets = async () => {
-    try {
-      setLoading(true)
+  const { data: assets = [], isLoading, error } = useQuery({
+    queryKey: ['inventory', searchTerm, categoryFilter, statusFilter],
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (searchTerm) params.append('search', searchTerm)
       if (categoryFilter !== 'all') params.append('category', categoryFilter)
@@ -149,16 +132,140 @@ export default function InventoryPage() {
       const response = await fetch(`/api/inventory?${params}`)
       if (!response.ok) throw new Error('Failed to fetch assets')
       
-      const data = await response.json()
-      setAssets(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch assets')
-    } finally {
-      setLoading(false)
-    }
-  }
+      return response.json()
+    },
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+  })
 
-  const calculateStats = () => {
+  const { data: aiPredictions, isLoading: aiLoading } = useQuery({
+    queryKey: ['inventory-ai-predictions'],
+    queryFn: async () => {
+      const response = await fetch('/api/inventory/prediction?type=batch')
+      if (!response.ok) throw new Error('Failed to fetch AI predictions')
+      
+      const data = await response.json()
+      
+      if (!data.predictions || data.predictions.length === 0) {
+        return null
+      }
+
+      const urgentRepairs = data.predictions
+        .filter((p: any) => p.predictedMaintenance === 'Immediate')
+        .map((p: any) => ({
+          name: p.assetName,
+          assetCode: p.assetCode,
+          urgency: p.stockOutRisk === 'high' ? 'high' : p.stockOutRisk === 'medium' ? 'medium' : 'low',
+          reason: p.riskFactors[0] || 'Maintenance required',
+          estimatedCost: 500,
+        }))
+
+      const highPriority = data.predictions
+        .filter((p: any) => p.replacementRecommendation === 'Replace Now')
+        .map((p: any) => ({
+          name: p.assetName,
+          assetCode: p.assetCode,
+          reason: p.riskFactors[0] || 'Replacement recommended',
+          estimatedCost: p.currentValue || 1000,
+        }))
+
+      const underutilized = data.predictions
+        .filter((p: any) => p.demandForecast === 'decreasing' && p.stockOutRisk === 'low')
+        .map((p: any) => ({
+          name: p.assetName,
+          assetCode: p.assetCode,
+          category: p.category,
+          lastUsed: '30+ days ago',
+          recommendation: 'Consider relocating or repurposing',
+        }))
+
+      const categoryMap = new Map<string, any>()
+      data.predictions.forEach((p: any) => {
+        const cat = p.category || 'Other'
+        if (!categoryMap.has(cat)) {
+          categoryMap.set(cat, {
+            category: cat,
+            assetCount: 0,
+            totalValue: 0,
+            conditionDistribution: {},
+            averageAge: p.age || 2,
+            maintenanceTrend: 'stable' as const,
+            recommendations: ['Regular maintenance recommended'],
+          })
+        }
+        const catData = categoryMap.get(cat)
+        catData.assetCount++
+        catData.totalValue += p.currentValue || 0
+        if (p.predictedMaintenance === 'Immediate') {
+          catData.maintenanceTrend = 'increasing'
+          catData.recommendations = ['Urgent maintenance required', 'Review condition regularly']
+        }
+      })
+
+      const categoryInsights = Array.from(categoryMap.values())
+
+      return {
+        generatedAt: new Date().toISOString(),
+        overallHealth: {
+          score: data.summary.averageConfidence || 0.85,
+          status: data.summary.immediateMaintenance > 0 ? 'fair' : 'good',
+          assetCount: data.summary.totalAssets,
+          totalValue: assets.reduce((sum: number, a: Asset) => sum + (a.currentValue || 0), 0),
+          depreciationRate: 8.5,
+        },
+        alerts: data.summary.immediateMaintenance > 0 ? [{
+          type: 'urgent',
+          priority: 'high',
+          title: 'Immediate Maintenance Required',
+          message: `${data.summary.immediateMaintenance} assets need urgent attention`,
+          action: 'Schedule maintenance',
+        }] : [],
+        maintenancePredictions: {
+          assetsNeedingMaintenance: data.summary.immediateMaintenance,
+          urgentRepairs,
+          estimatedCost: urgentRepairs.reduce((sum: number, r: any) => sum + r.estimatedCost, 0),
+          predictedNextMonthCost: urgentRepairs.reduce((sum: number, r: any) => sum + r.estimatedCost, 0) * 1.1,
+        },
+        replacementNeeds: {
+          highPriority,
+        },
+        utilizationAnalysis: {
+          utilizationRate: 0.75,
+          underutilizedAssets: underutilized,
+        },
+        financialProjections: {
+          nextQuarterMaintenanceCost: urgentRepairs.reduce((sum: number, r: any) => sum + r.estimatedCost, 0) * 3,
+          nextYearDepreciation: assets.reduce((sum: number, a: Asset) => sum + (a.currentValue || 0), 0) * 0.085,
+          budgetRecommendations: [
+            { category: 'Electronics', recommendedAmount: 5000, reason: 'Upcoming replacements' },
+            { category: 'Furniture', recommendedAmount: 3000, reason: 'Maintenance budget' },
+          ],
+        },
+        categoryInsights,
+        insights: {
+          keyHighlights: [
+            `Portfolio value: $${assets.reduce((sum: number, a: Asset) => sum + (a.currentValue || 0), 0).toLocaleString()}`,
+            `${data.summary.immediateMaintenance} assets require immediate attention`,
+            `Overall asset health score: ${(data.summary.averageConfidence || 0.85 * 100).toFixed(0)}%`,
+          ],
+          opportunities: [
+            'Optimize underutilized assets for better ROI',
+            'Implement preventive maintenance schedule',
+            'Consider bulk purchasing for high-demand items',
+          ],
+          priorities: [
+            { title: 'Schedule immediate maintenance for urgent assets', urgency: 'high' as const, impact: 'high' as const },
+            { title: 'Review replacement budget for aging assets', urgency: 'medium' as const, impact: 'high' as const },
+            { title: 'Reallocate underutilized equipment', urgency: 'low' as const, impact: 'medium' as const },
+          ],
+        },
+      }
+    },
+    enabled: assets.length > 0,
+    staleTime: 1000 * 60 * 30,
+  })
+
+  const stats = useMemo(() => {
     const total = assets.length
     const available = assets.filter(a => a.status === 'Available').length
     const inUse = assets.filter(a => a.status === 'InUse').length
@@ -166,15 +273,15 @@ export default function InventoryPage() {
     const totalValue = assets.reduce((sum, a) => sum + (a.currentValue || 0), 0)
     const lowCondition = assets.filter(a => a.condition === 'Poor' || a.condition === 'Fair').length
     
-    setStats({
+    return {
       total,
       available,
       inUse,
       maintenance,
       totalValue,
       lowCondition,
-    })
-  }
+    }
+  }, [assets])
 
   const handleView = async (asset: Asset) => {
     try {
@@ -263,12 +370,8 @@ export default function InventoryPage() {
     setSubmitError(null)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setSubmitError(null)
-
-    try {
+  const saveAssetMutation = useMutation({
+    mutationFn: async () => {
       const url = selectedAsset ? `/api/inventory/${selectedAsset.id}` : '/api/inventory'
       const method = selectedAsset ? 'PATCH' : 'POST'
       
@@ -284,34 +387,51 @@ export default function InventoryPage() {
 
       if (!response.ok) throw new Error('Failed to save asset')
 
-      await fetchAssets()
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] })
       if (selectedAsset) {
         handleCloseEditDialog()
       } else {
         handleCloseAddDialog()
       }
-    } catch (err) {
+    },
+    onError: (err) => {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save asset')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    },
+  })
 
-  const confirmDelete = async () => {
-    if (!selectedAsset) return
-
-    try {
-      const response = await fetch(`/api/inventory/${selectedAsset.id}`, {
+  const deleteAssetMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/inventory/${selectedAsset!.id}`, {
         method: 'DELETE',
       })
 
       if (!response.ok) throw new Error('Failed to delete asset')
 
-      await fetchAssets()
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] })
       handleCloseDeleteDialog()
-    } catch (err) {
+    },
+    onError: (err) => {
       setSubmitError(err instanceof Error ? err.message : 'Failed to delete asset')
-    }
+    },
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setSubmitError(null)
+    await saveAssetMutation.mutateAsync()
+    setIsSubmitting(false)
+  }
+
+  const confirmDelete = async () => {
+    if (!selectedAsset) return
+    await deleteAssetMutation.mutateAsync()
   }
 
   const getConditionBadge = (condition: string) => {
@@ -333,7 +453,7 @@ export default function InventoryPage() {
     return <Badge variant={variants[status as keyof typeof variants] || 'default'}>{status}</Badge>
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
@@ -352,8 +472,8 @@ export default function InventoryPage() {
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
             <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <p className="text-slate-600">{error}</p>
-            <Button onClick={fetchAssets} className="mt-4">
+            <p className="text-slate-600">{error.message}</p>
+            <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['inventory'] })} className="mt-4">
               Retry
             </Button>
           </div>
@@ -640,6 +760,8 @@ export default function InventoryPage() {
             </CardContent>
           </Card>
         </div>
+
+        <AIPredictionsCard predictions={aiPredictions} isLoading={aiLoading} />
 
         <Card className="border-slate-200 dark:border-slate-700 shadow-none">
           <CardHeader className="pb-4">

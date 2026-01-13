@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { startOfDay, endOfDay } from 'date-fns'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 60
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date')
@@ -42,10 +45,26 @@ export async function GET(req: Request) {
 
     const students = await db.student.findMany({
       where: whereClause,
-      include: {
-        grade: true,
-        section: true,
+      select: {
+        id: true,
+        rollNumber: true,
+        firstName: true,
+        lastName: true,
+        photo: true,
+        email: true,
+        phone: true,
+        grade: {
+          select: { name: true }
+        },
+        section: {
+          select: { name: true }
+        },
         attendances: {
+          select: {
+            status: true,
+            checkInTime: true,
+            checkOutTime: true
+          },
           where: {
             date: {
               gte: start,

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { PrefetchLink } from './prefetch-link'
+import { routePrefetchConfig } from '@/lib/route-prefetch-config'
 import {
   LayoutDashboard,
   Users,
@@ -100,7 +101,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
           'p-6 border-b border-slate-800/30',
           isCollapsed ? 'flex justify-center' : ''
         )}>
-          <Link href="/dashboard" className={cn(
+          <PrefetchLink href="/dashboard" prefetchQueryConfigs={routePrefetchConfig['/dashboard']} className={cn(
             'flex items-center gap-3 group',
             isCollapsed ? 'justify-center' : ''
           )}>
@@ -118,7 +119,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                 <p className="text-xs text-slate-500 font-medium tracking-wider">SCHOOL OS</p>
               </div>
             )}
-          </Link>
+          </PrefetchLink>
         </div>
 
         {/* Navigation */}
@@ -134,9 +135,10 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                 {section.items.map((item) => {
                   const isActive = pathname === item.href
                   return (
-                    <Link
+                    <PrefetchLink
                       key={item.href}
                       href={item.href}
+                      prefetchQueryConfigs={routePrefetchConfig[item.href]}
                       className={cn(
                         'group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300',
                         isActive
@@ -167,7 +169,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                         'w-4 h-4 transition-transform duration-300',
                         isActive ? 'rotate-90' : 'opacity-0 group-hover:opacity-100'
                       )} />
-                    </Link>
+                    </PrefetchLink>
                   )
                 })}
               </div>
@@ -266,9 +268,10 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                   {section.items.map((item) => {
                     const isActive = pathname === item.href
                     return (
-                      <Link
+                      <PrefetchLink
                       key={item.href}
                       href={item.href}
+                      prefetchQueryConfigs={routePrefetchConfig[item.href]}
                       className={cn(
                         'group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300',
                         isCollapsed ? 'justify-center' : '',
@@ -300,7 +303,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                           )}
                         </>
                       )}
-                    </Link>
+                    </PrefetchLink>
                     )
                   })}
                 </div>

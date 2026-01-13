@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { startOfDay, endOfDay, subDays, format } from 'date-fns'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 60
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date')
@@ -10,51 +13,61 @@ export async function GET(req: Request) {
 
   const date = new Date(dateStr)
   const todayStart = startOfDay(date)
-  const todayEnd = endOfDay(date)
 
   try {
-    // 1. Get Weekly Trends (Last 7 days including today)
+    const sevenDaysAgo = subDays(date, 6)
+    const sevenDaysAgoStart = startOfDay(sevenDaysAgo)
+    const todayEnd = endOfDay(date)
+
+    const totalStudents = await db.student.count({
+      where: { status: 'Active' }
+    })
+
+    const allAttendanceRecords = await db.attendance.findMany({
+      select: {
+        date: true,
+        status: true
+      },
+      where: {
+        date: {
+          gte: sevenDaysAgoStart,
+          lte: todayEnd
+        }
+      }
+    })
+
+    const attendanceByDate = new Map<string, Record<string, number>>()
+    
+    for (let i = 0; i < 7; i++) {
+      const d = subDays(date, i)
+      const dateKey = d.toISOString().split('T')[0]
+      attendanceByDate.set(dateKey, {
+        Present: 0,
+        Absent: 0,
+        Late: 0,
+        HalfDay: 0
+      })
+    }
+
+    allAttendanceRecords.forEach(record => {
+      const dateKey = record.date.toISOString().split('T')[0]
+      const dayStats = attendanceByDate.get(dateKey)
+      if (dayStats && record.status in dayStats) {
+        dayStats[record.status]++
+      }
+    })
+
     const trendData = []
     for (let i = 6; i >= 0; i--) {
       const d = subDays(date, i)
-      const s = startOfDay(d)
-      const e = endOfDay(d)
-
-      // Get total active students for that day (approximation: current active students)
-      // Ideally we'd check snapshot, but for now current active students is close enough
-      const totalStudents = await db.student.count({
-        where: { status: 'Active' }
-      })
-
-      const attendanceRecords = await db.attendance.groupBy({
-        by: ['status'],
-        where: {
-          date: {
-            gte: s,
-            lte: e
-          }
-        },
-        _count: {
-          status: true
-        }
-      })
-
-      const stats = {
+      const dateKey = d.toISOString().split('T')[0]
+      const stats = attendanceByDate.get(dateKey) || {
         Present: 0,
         Absent: 0,
         Late: 0,
         HalfDay: 0
       }
 
-      attendanceRecords.forEach(record => {
-        if (record.status in stats) {
-          stats[record.status as keyof typeof stats] = record._count.status
-        }
-      })
-
-      const presentCount = stats.Present + stats.Late + stats.HalfDay // Usually Late/HalfDay count as present-ish or we can separate
-      // But for "Rate", usually it's (Present + Late + HalfDay) / Total
-      
       const effectivePresent = stats.Present + stats.Late + stats.HalfDay
       const rate = totalStudents > 0 ? (effectivePresent / totalStudents) * 100 : 0
 

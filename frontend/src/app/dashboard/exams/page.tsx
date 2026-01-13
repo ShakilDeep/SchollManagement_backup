@@ -54,6 +54,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { CreateExamDialog } from './components/create-exam-dialog'
+import AIPredictionsCard from './components/ai-predictions-card'
 
 interface Exam {
   id: string
@@ -141,6 +142,8 @@ export default function ExamsPage() {
   const [grades, setGrades] = useState<any[]>([])
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false)
   const [isLoadingGrades, setIsLoadingGrades] = useState(false)
+  const [predictions, setPredictions] = useState<any>(null)
+  const [isLoadingPredictions, setIsLoadingPredictions] = useState(false)
 
   const fetchExams = useCallback(async () => {
     try {
@@ -221,6 +224,25 @@ export default function ExamsPage() {
   useEffect(() => {
     fetchGrades()
   }, [fetchGrades])
+
+  const fetchPredictions = useCallback(async () => {
+    try {
+      setIsLoadingPredictions(true)
+      const response = await fetch('/api/exams/predictions')
+      if (response.ok) {
+        const data = await response.json()
+        setPredictions(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch predictions:', err)
+    } finally {
+      setIsLoadingPredictions(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchPredictions()
+  }, [fetchPredictions])
 
   const currentExam = useMemo(() => {
     return exams.find(e => e.id === selectedExam)
@@ -703,6 +725,8 @@ export default function ExamsPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              <AIPredictionsCard predictions={predictions} isLoading={isLoadingPredictions} />
 
               {/* Results Table */}
               <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl shadow-xl border-slate-200/50 dark:border-slate-700/50">

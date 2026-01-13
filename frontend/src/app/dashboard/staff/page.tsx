@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatCurrency } from '@/lib/utils'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -46,6 +47,7 @@ import {
 } from 'lucide-react'
 import { AddStaffDialog } from './components/add-staff-dialog'
 import { EditStaffDialog } from './components/edit-staff-dialog'
+import AIPredictionsCard from './components/ai-predictions-card'
 
 interface Staff {
   id: string
@@ -60,10 +62,16 @@ interface Staff {
   joinDate: string
 }
 
+const fetchStaff = async () => {
+  const response = await fetch('/api/staff')
+  if (!response.ok) {
+    throw new Error('Failed to fetch staff')
+  }
+  return response.json()
+}
+
 export default function StaffPage() {
-  const [staff, setStaff] = useState<Staff[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [departmentFilter, setDepartmentFilter] = useState('all')
@@ -79,27 +87,12 @@ export default function StaffPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const fetchStaff = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch('/api/staff')
-      if (!response.ok) {
-        throw new Error('Failed to fetch staff')
-      }
-      const data = await response.json()
-      setStaff(data)
-    } catch (err) {
-      setError('Failed to load staff data')
-      console.error('Error fetching staff:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchStaff()
-  }, [fetchStaff])
+  const { data: staff = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['staff'],
+    queryFn: fetchStaff,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+  })
 
   const filteredStaff = useMemo(() => staff.filter((member) => {
     const matchesSearch =
@@ -165,14 +158,9 @@ export default function StaffPage() {
     setSubmitError(null)
   }, [])
 
-  const handleDeleteStaff = useCallback(async () => {
-    if (!selectedStaff) return
-
-    setIsSubmitting(true)
-    setSubmitError(null)
-
-    try {
-      const response = await fetch(`/api/staff/${selectedStaff.id}`, {
+  const deleteStaffMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/staff/${id}`, {
         method: 'DELETE',
       })
 
@@ -181,16 +169,31 @@ export default function StaffPage() {
         throw new Error(errorData.error || 'Failed to delete staff member')
       }
 
-      await fetchStaff()
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] })
       handleCloseDeleteDialog()
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to delete staff member')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [selectedStaff, fetchStaff, handleCloseDeleteDialog])
+    },
+    onError: (err: Error) => {
+      setSubmitError(err.message)
+    },
+  })
 
-  if (loading) {
+  const handleDeleteStaff = useCallback(async () => {
+    if (!selectedStaff) return
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+
+    deleteStaffMutation.mutate(selectedStaff.id, {
+      onSettled: () => {
+        setIsSubmitting(false)
+      }
+    })
+  }, [selectedStaff, deleteStaffMutation, handleCloseDeleteDialog])
+
+  if (isLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
@@ -205,8 +208,8 @@ export default function StaffPage() {
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
-            <p className="text-neutral-900 font-medium">{error}</p>
-            <Button onClick={fetchStaff} className="mt-4">
+            <p className="text-neutral-900 font-medium">{error.message}</p>
+            <Button onClick={() => refetch()} className="mt-4">
               Retry
             </Button>
           </div>
@@ -309,6 +312,8 @@ export default function StaffPage() {
           </Card>
         </div>
 
+        <AIPredictionsCard />
+
         <Card className="border-l-4 border-l-neutral-900 border-neutral-200/60 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 pt-5 px-5">
             <div>
@@ -324,6 +329,7 @@ export default function StaffPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
                 <Input
+                  name="search"
                   placeholder="Search by name, ID, or designation..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}

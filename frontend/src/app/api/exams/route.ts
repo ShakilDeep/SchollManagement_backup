@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const revalidate = 60
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -8,16 +10,15 @@ export async function GET(request: NextRequest) {
     const gradeId = searchParams.get('gradeId')
     const status = searchParams.get('status')
 
-    // Get current academic year
     const currentYear = await db.academicYear.findFirst({
-      where: { isCurrent: true }
+      where: { isCurrent: true },
+      select: { id: true, name: true }
     })
 
     if (!currentYear) {
       return NextResponse.json({ error: 'No current academic year found' }, { status: 404 })
     }
 
-    // Build filter conditions
     const whereConditions: any = {
       academicYearId: currentYear.id
     }
@@ -30,12 +31,25 @@ export async function GET(request: NextRequest) {
       whereConditions.status = status
     }
 
-    // Fetch exams with their papers
     const exams = await db.exam.findMany({
       where: whereConditions,
-      include: {
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        startDate: true,
+        endDate: true,
+        status: true,
         papers: {
-          include: {
+          select: {
+            id: true,
+            gradeId: true,
+            totalMarks: true,
+            passingMarks: true,
+            duration: true,
+            examDate: true,
+            startTime: true,
+            endTime: true,
             subject: {
               select: {
                 id: true,
@@ -43,7 +57,6 @@ export async function GET(request: NextRequest) {
                 code: true
               }
             },
-            
             _count: {
               select: {
                 results: true

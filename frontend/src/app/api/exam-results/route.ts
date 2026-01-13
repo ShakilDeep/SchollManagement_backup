@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const revalidate = 60
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -10,7 +12,6 @@ export async function GET(request: NextRequest) {
     const gradeId = searchParams.get('gradeId')
     const subjectId = searchParams.get('subjectId')
 
-    // Build where conditions
     const whereConditions: any = {}
 
     if (examPaperId) {
@@ -38,12 +39,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch exam results
     const results = await db.examResult.findMany({
       where: whereConditions,
-      include: {
+      select: {
+        id: true,
+        studentId: true,
+        marksObtained: true,
+        percentage: true,
+        rank: true,
+        remarks: true,
+        examPaperId: true,
         student: {
-          include: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            rollNumber: true,
             grade: {
               select: {
                 id: true,
@@ -59,7 +70,10 @@ export async function GET(request: NextRequest) {
           }
         },
         examPaper: {
-          include: {
+          select: {
+            totalMarks: true,
+            passingMarks: true,
+            examDate: true,
             subject: {
               select: {
                 id: true,

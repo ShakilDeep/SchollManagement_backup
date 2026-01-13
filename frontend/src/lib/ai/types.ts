@@ -129,3 +129,96 @@ export interface AIAnalytics {
   averageResponseTime: number
   lastUpdated: Date
 }
+
+export interface InventoryPrediction {
+  overallHealth: {
+    score: number
+    status: 'excellent' | 'good' | 'fair' | 'poor'
+    totalValue: number
+    assetCount: number
+    depreciationRate: number
+  }
+  maintenancePredictions: {
+    assetsNeedingMaintenance: number
+    estimatedCost: number
+    urgentRepairs: Array<{
+      assetCode: string
+      name: string
+      reason: string
+      estimatedCost: number
+      urgency: 'high' | 'medium' | 'low'
+    }>
+    predictedNextMonthCost: number
+  }
+  replacementNeeds: {
+    highPriority: Array<{
+      assetCode: string
+      name: string
+      reason: string
+      estimatedCost: number
+      recommendedAction: string
+    }>
+    mediumPriority: Array<{
+      assetCode: string
+      name: string
+      reason: string
+      estimatedCost: number
+    }>
+    totalReplacementBudget: number
+    timeFrame: string
+  }
+  utilizationAnalysis: {
+    underutilizedAssets: Array<{
+      assetCode: string
+      name: string
+      category: string
+      lastUsed: string
+      recommendation: string
+    }>
+    overutilizedAssets: Array<{
+      assetCode: string
+      name: string
+      category: string
+      usageFrequency: number
+      recommendation: string
+    }>
+    utilizationRate: number
+    improvementOpportunities: string[]
+  }
+  categoryInsights: Array<{
+    category: string
+    assetCount: number
+    totalValue: number
+    conditionDistribution: Record<string, number>
+    averageAge: number
+    maintenanceTrend: 'increasing' | 'stable' | 'decreasing'
+    recommendations: string[]
+  }>
+  financialProjections: {
+    nextQuarterMaintenanceCost: number
+    nextYearDepreciation: number
+    totalAssetValueLoss: number
+    budgetRecommendations: Array<{
+      category: string
+      recommendedAmount: number
+      reason: string
+    }>
+  }
+  alerts: Array<{
+    type: 'urgent' | 'warning' | 'info'
+    title: string
+    message: string
+    action?: string
+    priority: 'high' | 'medium' | 'low'
+  }>
+  insights: {
+    keyHighlights: string[]
+    opportunities: string[]
+    priorities: Array<{
+      title: string
+      urgency: 'high' | 'medium' | 'low'
+      impact: 'high' | 'medium' | 'low'
+    }>
+  }
+  generatedAt: Date
+}
