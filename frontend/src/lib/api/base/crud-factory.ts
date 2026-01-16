@@ -13,6 +13,7 @@ import {
   internalError,
   handleApiError,
 } from './api-handler'
+import { prismaCache } from '@/lib/prisma-cache'
 
 export interface ResourceConfig<T = unknown> {
   model: keyof typeof db
@@ -92,6 +93,13 @@ export class CRUDFactory<T = unknown> {
       const sortBy = searchParams.get('sortBy')
       const sortOrder = searchParams.get('sortOrder') as 'asc' | 'desc' | null
 
+      const cacheKey = `${this.pluralName}:list:${searchParams.toString()}`
+
+      const cachedData = prismaCache.get(cacheKey)
+      if (cachedData && !search) {
+        return success(cachedData)
+      }
+
       const queryBuilderOptions: QueryBuilderOptions = {
         searchFields: this.config.searchFields,
         filterFields: this.config.filterFields,
@@ -118,8 +126,10 @@ export class CRUDFactory<T = unknown> {
         ? data.map((item: any) => this.transformResponse(item))
         : this.transformResponse(data)
 
+      let responseData = transformedData
+
       if (page && pageSize) {
-        return success({
+        responseData = {
           data: transformedData,
           pagination: {
             page: Number(page),
@@ -127,10 +137,14 @@ export class CRUDFactory<T = unknown> {
             total,
             totalPages: Math.ceil(total / Number(pageSize)),
           },
-        })
+        }
       }
 
-      return success(transformedData)
+      if (!search) {
+        prismaCache.set(cacheKey, responseData, 30000)
+      }
+
+      return success(responseData)
     }, `GET /${this.pluralName}`)
   }
 
@@ -156,6 +170,8 @@ export class CRUDFactory<T = unknown> {
       if (this.config.afterCreate) {
         await this.config.afterCreate(createdRecord)
       }
+
+      prismaCache.invalidate(this.pluralName)
 
       return created(this.transformResponse(createdRecord))
     }, `POST /${this.pluralName}`)
@@ -194,6 +210,8 @@ export class CRUDFactory<T = unknown> {
         await this.config.afterUpdate(id, updated)
       }
 
+      prismaCache.invalidate(this.pluralName, id)
+
       return success(this.transformResponse(updated))
     }, `PUT /${this.pluralName}/${id}`)
   }
@@ -230,6 +248,8 @@ export class CRUDFactory<T = unknown> {
       if (this.config.afterUpdate) {
         await this.config.afterUpdate(id, updated)
       }
+
+      prismaCache.invalidate(this.pluralName, id)
 
       return success(this.transformResponse(updated))
     }, `PATCH /${this.pluralName}/${id}`)

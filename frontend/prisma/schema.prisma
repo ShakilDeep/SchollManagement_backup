@@ -19,6 +19,8 @@ model User {
   dateOfBirth           DateTime?
   isActive              Boolean                @default(true)
   lastLogin             DateTime?
+  passwordUpdatedAt     DateTime?
+  forcePasswordChange   Boolean                @default(false)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   attendancesMarked     Attendance[]           @relation("AttendanceMarker")
@@ -28,6 +30,8 @@ model User {
   receivedMessages      Message[]              @relation("MessageReceiver")
   sentMessages          Message[]              @relation("MessageSender")
   notifications         Notification[]
+  passwordHistory       PasswordHistory[]
+  apiKeys               ApiKey[]
   parent                Parent?
   staffProfile          Staff?
   studentProfile        Student?
@@ -225,6 +229,10 @@ model ExamPaper {
   subject      Subject      @relation(fields: [subjectId], references: [id])
   exam         Exam         @relation(fields: [examId], references: [id])
   results      ExamResult[]
+
+  @@index([examId])
+  @@index([subjectId])
+  @@index([gradeId, sectionId])
 }
 
 model ExamResult {
@@ -243,6 +251,7 @@ model ExamResult {
   @@index([studentId])
   @@index([examPaperId])
   @@index([percentage])
+  @@index([examPaperId, studentId])
 }
 
 model Teacher {
@@ -655,8 +664,38 @@ model BehaviorRecord {
   Student        Student  @relation(fields: [studentId], references: [id])
 
   @@index([type])
+  @@index([category])
   @@index([date])
   @@index([studentId])
+}
+
+model PasswordHistory {
+  id             String   @id @default(cuid())
+  userId         String
+  hashedPassword String
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  keyId       String   @unique
+  hashedKey   String
+  scopes      String
+  status      String   @default("ACTIVE")
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+  revokedBy   String?
+
+  @@index([userId])
+  @@index([keyId])
+  @@index([status])
+  @@index([expiresAt])
 }
 
 enum UserRole {

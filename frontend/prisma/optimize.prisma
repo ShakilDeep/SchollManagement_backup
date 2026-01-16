@@ -1,0 +1,126 @@
+// Database Optimization Script
+// Run this to optimize the database with additional indexes
+
+-- Add compound indexes for common queries
+
+-- User indexes
+CREATE INDEX IF NOT EXISTS idx_user_role_active ON User(role, isActive);
+CREATE INDEX IF NOT EXISTS idx_user_email_active ON User(email, isActive);
+CREATE INDEX IF NOT EXISTS idx_user_last_login ON User(lastLogin DESC);
+
+-- Student indexes
+CREATE INDEX IF NOT EXISTS idx_student_status_grade ON Student(status, gradeId);
+CREATE INDEX IF NOT EXISTS idx_student_name_search ON Student(firstName, lastName);
+CREATE INDEX IF NOT EXISTS idx_student_academic_grade_section ON Student(academicYearId, gradeId, sectionId);
+
+-- Attendance indexes
+CREATE INDEX IF NOT EXISTS idx_attendance_student_date_status ON Attendance(studentId, date DESC, status);
+CREATE INDEX IF NOT EXISTS idx_attendance_date_status_student ON Attendance(date, status, studentId);
+CREATE INDEX IF NOT EXISTS idx_attendance_marker_date ON Attendance(markedBy, date DESC);
+
+-- Exam result indexes
+CREATE INDEX IF NOT EXISTS idx_exam_result_student_paper ON ExamResult(studentId, examPaperId);
+CREATE INDEX IF NOT EXISTS idx_exam_result_percentage ON ExamResult(percentage DESC);
+CREATE INDEX IF NOT EXISTS idx_exam_result_paper_student ON ExamResult(examPaperId, studentId);
+
+-- Message indexes
+CREATE INDEX IF NOT EXISTS idx_message_receiver_read ON Message(receiverId, isRead, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_message_sender_date ON Message(senderId, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_message_priority_type ON Message(priority, type, createdAt DESC);
+
+-- Audit log indexes
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_date ON AuditLog(userId, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action_date ON AuditLog(action, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity_date ON AuditLog(entity, entityId, createdAt DESC);
+
+-- Notification indexes
+CREATE INDEX IF NOT EXISTS idx_notification_user_read ON Notification(userId, isRead, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_type_date ON Notification(type, createdAt DESC);
+
+-- Library borrowal indexes
+CREATE INDEX IF NOT EXISTS idx_library_student_status ON LibraryBorrowal(studentId, status, dueDate);
+CREATE INDEX IF NOT EXISTS idx_library_book_status ON LibraryBorrowal(bookId, status, borrowDate DESC);
+CREATE INDEX IF NOT EXISTS idx_library_due_date ON LibraryBorrowal(dueDate, status);
+
+-- Transport allocation indexes
+CREATE INDEX IF NOT EXISTS idx_transport_vehicle_academic ON TransportAllocation(vehicleId, academicYearId);
+CREATE INDEX IF NOT EXISTS idx_transport_student_academic ON TransportAllocation(studentId, academicYearId);
+
+-- Hostel allocation indexes
+CREATE INDEX IF NOT EXISTS idx_hostel_room_academic ON HostelAllocation(roomId, academicYearId, status);
+CREATE INDEX IF NOT EXISTS idx_hostel_student_academic ON HostelAllocation(studentId, academicYearId, status);
+
+-- API key indexes
+CREATE INDEX IF NOT EXISTS idx_api_key_user_status ON ApiKey(userId, status);
+CREATE INDEX IF NOT EXISTS idx_api_key_key_id_status ON ApiKey(keyId, status);
+
+-- Password history indexes
+CREATE INDEX IF NOT EXISTS idx_password_history_user_date ON PasswordHistory(userId, createdAt DESC);
+
+-- Behavior record indexes
+CREATE INDEX IF NOT EXISTS idx_behavior_student_type ON BehaviorRecord(studentId, type, date DESC);
+CREATE INDEX IF NOT EXISTS idx_behavior_category_date ON BehaviorRecord(category, date DESC);
+
+-- Inventory transaction indexes
+CREATE INDEX IF NOT EXISTS idx_inventory_asset_date ON InventoryTransaction(assetId, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_inventory_performer_date ON InventoryTransaction(performedBy, createdAt DESC);
+
+-- Course/lesson progress indexes
+CREATE INDEX IF NOT EXISTS idx_lesson_progress_student_lesson ON LessonProgress(studentId, completed, lessonId);
+CREATE INDEX IF NOT EXISTS idx_course_module_course ON CourseModule(courseId, order);
+CREATE INDEX IF NOT EXISTS idx_course_lesson_module ON CourseLesson(moduleID, order);
+
+-- System settings indexes
+CREATE INDEX IF NOT EXISTS idx_system_settings_category ON SystemSettings(category, key);
+
+-- Report indexes
+CREATE INDEX IF NOT EXISTS idx_report_type_date ON Report(type, createdAt DESC);
+
+-- Timetable indexes
+CREATE INDEX IF NOT EXISTS idx_timetable_section_day_period ON Timetable(sectionId, dayOfWeek, period);
+CREATE INDEX IF NOT EXISTS idx_timetable_teacher_date ON Timetable(teacherId, dayOfWeek, period);
+
+-- Create views for common queries
+
+CREATE VIEW IF NOT EXISTS vw_student_attendance_summary AS
+SELECT
+  s.id as student_id,
+  s.firstName,
+  s.lastName,
+  s.gradeId,
+  s.sectionId,
+  COUNT(CASE WHEN a.status = 'Present' THEN 1 END) as present_days,
+  COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) as absent_days,
+  COUNT(CASE WHEN a.status = 'Late' THEN 1 END) as late_days,
+  COUNT(*) as total_days,
+  ROUND(CAST(COUNT(CASE WHEN a.status = 'Present' THEN 1 END) AS FLOAT) / COUNT(*) * 100, 2) as attendance_percentage
+FROM Student s
+LEFT JOIN Attendance a ON s.id = a.studentId
+GROUP BY s.id, s.firstName, s.lastName, s.gradeId, s.sectionId;
+
+CREATE VIEW IF NOT EXISTS vw_student_exam_performance AS
+SELECT
+  s.id as student_id,
+  s.firstName,
+  s.lastName,
+  s.gradeId,
+  COUNT(er.id) as total_exams,
+  AVG(er.percentage) as average_percentage,
+  MAX(er.percentage) as highest_percentage,
+  MIN(er.percentage) as lowest_percentage,
+  SUM(CASE WHEN er.percentage >= 60 THEN 1 ELSE 0 END) as passed_exams,
+  ROUND(CAST(SUM(CASE WHEN er.percentage >= 60 THEN 1 ELSE 0 END) AS FLOAT) / COUNT(er.id) * 100, 2) as pass_rate
+FROM Student s
+LEFT JOIN ExamResult er ON s.id = er.studentId
+GROUP BY s.id, s.firstName, s.lastName, s.gradeId;
+
+CREATE VIEW IF NOT EXISTS vw_active_users_summary AS
+SELECT
+  u.role,
+  COUNT(*) as user_count,
+  COUNT(CASE WHEN u.lastLogin >= datetime('now', '-7 days') THEN 1 END) as active_last_7_days,
+  COUNT(CASE WHEN u.lastLogin >= datetime('now', '-30 days') THEN 1 END) as active_last_30_days,
+  MAX(u.lastLogin) as last_login
+FROM User u
+WHERE u.isActive = 1
+GROUP BY u.role;

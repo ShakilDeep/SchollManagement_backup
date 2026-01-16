@@ -293,7 +293,60 @@ export async function GET() {
     const predictionService = new LibraryPredictionService()
     const predictions = await predictionService.predictLibrary(libraryData)
 
-    return NextResponse.json(predictions)
+    const fallbackPredictions = generateFallbackPredictions(books, borrowals)
+
+    const safePredictions = {
+      ...fallbackPredictions,
+      ...predictions,
+      overallHealth: { ...fallbackPredictions.overallHealth, ...predictions.overallHealth },
+      popularBooks: {
+        ...fallbackPredictions.popularBooks,
+        ...predictions.popularBooks,
+        trendingBooks: predictions.popularBooks?.trendingBooks || fallbackPredictions.popularBooks.trendingBooks,
+        highDemandCategories: predictions.popularBooks?.highDemandCategories || fallbackPredictions.popularBooks.highDemandCategories,
+        seasonalityInsights: predictions.popularBooks?.seasonalityInsights || fallbackPredictions.popularBooks.seasonalityInsights
+      },
+      stockAlerts: {
+        ...fallbackPredictions.stockAlerts,
+        ...predictions.stockAlerts,
+        outOfStockBooks: predictions.stockAlerts?.outOfStockBooks || fallbackPredictions.stockAlerts.outOfStockBooks,
+        lowStockBooks: predictions.stockAlerts?.lowStockBooks || fallbackPredictions.stockAlerts.lowStockBooks
+      },
+      borrowingPatterns: {
+        ...fallbackPredictions.borrowingPatterns,
+        ...predictions.borrowingPatterns,
+        peakBorrowingTimes: predictions.borrowingPatterns?.peakBorrowingTimes || fallbackPredictions.borrowingPatterns.peakBorrowingTimes,
+        frequentBorrowers: predictions.borrowingPatterns?.frequentBorrowers || fallbackPredictions.borrowingPatterns.frequentBorrowers
+      },
+      acquisitionRecommendations: {
+        ...fallbackPredictions.acquisitionRecommendations,
+        ...predictions.acquisitionRecommendations,
+        recommendedPurchases: predictions.acquisitionRecommendations?.recommendedPurchases || fallbackPredictions.acquisitionRecommendations.recommendedPurchases,
+        categoriesToExpand: predictions.acquisitionRecommendations?.categoriesToExpand || fallbackPredictions.acquisitionRecommendations.categoriesToExpand
+      },
+      categoryPerformance: {
+        ...fallbackPredictions.categoryPerformance,
+        ...predictions.categoryPerformance,
+        topPerforming: predictions.categoryPerformance?.topPerforming || fallbackPredictions.categoryPerformance.topPerforming,
+        underperforming: predictions.categoryPerformance?.underperforming || fallbackPredictions.categoryPerformance.underperforming
+      },
+      spaceUtilization: {
+        ...fallbackPredictions.spaceUtilization,
+        ...predictions.spaceUtilization,
+        overcrowdedCategories: predictions.spaceUtilization?.overcrowdedCategories || fallbackPredictions.spaceUtilization.overcrowdedCategories,
+        underutilizedAreas: predictions.spaceUtilization?.underutilizedAreas || fallbackPredictions.spaceUtilization.underutilizedAreas
+      },
+      alerts: predictions.alerts || fallbackPredictions.alerts,
+      insights: {
+        ...fallbackPredictions.insights,
+        ...predictions.insights,
+        keyHighlights: predictions.insights?.keyHighlights || fallbackPredictions.insights.keyHighlights,
+        opportunities: predictions.insights?.opportunities || fallbackPredictions.insights.opportunities,
+        priorities: predictions.insights?.priorities || fallbackPredictions.insights.priorities
+      }
+    }
+
+    return NextResponse.json(safePredictions)
   } catch (error) {
     console.error('[PREDICTIONS_GET]', error)
 

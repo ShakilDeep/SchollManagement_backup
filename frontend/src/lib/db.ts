@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 const getDatabaseUrl = () => {
   const baseUrl = process.env.DATABASE_URL || 'file:./dev.db'
   const separator = baseUrl.includes('?') ? '&' : '?'
-  return `${baseUrl}${separator}connection_limit=10&pool_timeout=20&socket_timeout=20`
+  return `${baseUrl}${separator}connection_limit=20&pool_timeout=10&socket_timeout=10&journal_mode=WAL&cache_size=-64000&synchronous=NORMAL`
 }
 
 export const db =

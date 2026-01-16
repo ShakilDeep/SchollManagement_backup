@@ -58,6 +58,8 @@ import {
   Eye,
   LogOut
 } from 'lucide-react'
+import AIPredictionsCard from './components/ai-predictions-card'
+import type { HostelPrediction } from '@/lib/ai/types'
 
 interface Hostel {
   id: string
@@ -147,6 +149,24 @@ export default function HostelPage() {
     pendingFees: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [predictions, setPredictions] = useState<HostelPrediction | null>(null)
+  const [predictionsLoading, setPredictionsLoading] = useState(false)
+  const [predictionsError, setPredictionsError] = useState<string | null>(null)
+
+  const fetchPredictions = useCallback(async () => {
+    setPredictionsLoading(true)
+    setPredictionsError(null)
+    try {
+      const response = await fetch('/api/hostels/predictions')
+      const data = await response.json()
+      setPredictions(data)
+    } catch (error) {
+      console.error('Error fetching predictions:', error)
+      setPredictionsError('Failed to load predictions')
+    } finally {
+      setPredictionsLoading(false)
+    }
+  }, [])
 
   const fetchHostels = useCallback(async () => {
     try {
@@ -182,7 +202,8 @@ export default function HostelPage() {
     fetchHostels()
     fetchRooms()
     fetchAllocations()
-  }, [fetchHostels, fetchRooms, fetchAllocations])
+    fetchPredictions()
+  }, [fetchHostels, fetchRooms, fetchAllocations, fetchPredictions])
 
   const calculateStats = useCallback(() => {
     const totalHostels = hostels.length
@@ -626,6 +647,12 @@ export default function HostelPage() {
             </CardContent>
           </Card>
         </div>
+
+        <AIPredictionsCard 
+          predictions={predictions} 
+          isLoading={predictionsLoading} 
+          error={predictionsError} 
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">

@@ -223,6 +223,83 @@ export interface InventoryPrediction {
   generatedAt: Date
 }
 
+export interface HostelPrediction {
+  overallHealth: {
+    score: number
+    status: 'excellent' | 'good' | 'fair' | 'poor'
+    totalHostels: number
+    totalRooms: number
+    totalCapacity: number
+    currentOccupancy: number
+    occupancyRate: number
+    monthlyRevenue: number
+  }
+  popularHostels: Array<{
+    id: string
+    name: string
+    type: string
+    occupancyRate: number
+    demand: 'high' | 'medium' | 'low'
+    recommendation: string
+  }>
+  occupancyForecast: {
+    current: number
+    projected: number
+    trend: 'increasing' | 'stable' | 'decreasing'
+    nextMonthOccupancy: number
+    peakSeason?: string
+  }
+  feeCollection: {
+    totalRevenue: number
+    collectedAmount: number
+    pendingAmount: number
+    collectionRate: number
+    defaultRisk: 'low' | 'medium' | 'high'
+  }
+  roomUtilization: {
+    mostUtilized: Array<{ roomNumber: string; occupancyRate: number; hostel: string }>
+    leastUtilized: Array<{ roomNumber: string; occupancyRate: number; hostel: string }>
+    floorPreferences: Record<number, number>
+  }
+  capacityAlerts: Array<{
+    type: 'warning' | 'critical' | 'info'
+    hostelId: string
+    hostelName: string
+    message: string
+    action: string
+    priority: 'low' | 'medium' | 'high'
+  }>
+  genderDistribution: {
+    maleCount: number
+    femaleCount: number
+    balance: 'balanced' | 'imbalanced'
+    recommendation: string
+  }
+  actionableInsights: Array<{
+    category: string
+    insight: string
+    impact: 'high' | 'medium' | 'low'
+    effort: 'low' | 'medium' | 'high'
+  }>
+  alerts: Array<{
+    type: 'urgent' | 'warning' | 'info'
+    title: string
+    message: string
+    action?: string
+    priority?: 'high' | 'medium' | 'low'
+  }>
+  insights: {
+    keyHighlights: string[]
+    opportunities: string[]
+    priorities: Array<{
+      title: string
+      urgency: 'high' | 'medium' | 'low'
+      impact: 'high' | 'medium' | 'low'
+    }>
+  }
+  generatedAt: Date
+}
+
 export interface LibraryPrediction {
   overallHealth: {
     score: number
@@ -279,14 +356,16 @@ export interface LibraryPrediction {
       borrowCount: number
     }>
     overdueTrend: 'increasing' | 'stable' | 'decreasing'
+    overdueRate: number
     averageReturnDelay: number
     frequentBorrowers: Array<{
+      studentId: string
       studentName: string
       rollNumber: string
       borrowCount: number
       overdueCount: number
     }>
-    borrowingFrequency: string
+    borrowingFrequency: 'high' | 'moderate' | 'low'
   }
   acquisitionRecommendations: {
     recommendedPurchases: Array<{

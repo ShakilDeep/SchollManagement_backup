@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Brain, BookOpen, AlertTriangle, TrendingUp, Clock, BarChart3, CheckCircle, XCircle, Lightbulb, Package, ArrowUpRight } from 'lucide-react'
+import { Brain, BookOpen, AlertTriangle, TrendingUp, Clock, BarChart3, CheckCircle, Lightbulb, Package, ArrowUpRight } from 'lucide-react'
 import { LibraryPrediction } from '@/lib/ai/types'
 
 interface LibraryPredictionsCardProps {
@@ -9,6 +9,35 @@ interface LibraryPredictionsCardProps {
 }
 
 export default function LibraryPredictionsCard({ predictions, isLoading }: LibraryPredictionsCardProps) {
+  const getHealthColor = (status: string) => {
+    switch (status) {
+      case 'excellent':
+        return 'text-emerald-600 bg-emerald-50'
+      case 'good':
+        return 'text-blue-600 bg-blue-50'
+      case 'fair':
+        return 'text-amber-600 bg-amber-50'
+      case 'poor':
+        return 'text-rose-600 bg-rose-50'
+      default:
+        return 'text-slate-600 bg-slate-50'
+    }
+  }
+
+  const getHealthIcon = (status: string) => {
+    switch (status) {
+      case 'excellent':
+        return <CheckCircle className="h-4 w-4" />
+      case 'good':
+        return <CheckCircle className="h-4 w-4" />
+      case 'fair':
+        return <Lightbulb className="h-4 w-4" />
+      case 'poor':
+        return <AlertTriangle className="h-4 w-4" />
+      default:
+        return <Brain className="h-4 w-4" />
+    }
+  }
   if (isLoading) {
     return (
       <Card>
@@ -42,36 +71,6 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
         </CardContent>
       </Card>
     )
-  }
-
-  const getHealthColor = (status: string) => {
-    switch (status) {
-      case 'excellent':
-        return 'text-emerald-600 bg-emerald-50'
-      case 'good':
-        return 'text-blue-600 bg-blue-50'
-      case 'fair':
-        return 'text-amber-600 bg-amber-50'
-      case 'poor':
-        return 'text-rose-600 bg-rose-50'
-      default:
-        return 'text-slate-600 bg-slate-50'
-    }
-  }
-
-  const getHealthIcon = (status: string) => {
-    switch (status) {
-      case 'excellent':
-        return <CheckCircle className="h-4 w-4" />
-      case 'good':
-        return <CheckCircle className="h-4 w-4" />
-      case 'fair':
-        return <Lightbulb className="h-4 w-4" />
-      case 'poor':
-        return <AlertTriangle className="h-4 w-4" />
-      default:
-        return <Brain className="h-4 w-4" />
-    }
   }
 
   return (
@@ -112,9 +111,6 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
                 {getHealthIcon(predictions.overallHealth.status)}
                 {predictions.overallHealth.status}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {predictions.overallHealth.summary}
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -131,14 +127,14 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
           <CardContent>
             <div className="space-y-2">
               <div className="text-2xl font-bold">
-                {predictions.borrowingPatterns.totalBorrowals}
+                {predictions.borrowingPatterns.frequentBorrowers.length}
               </div>
               <p className="text-xs text-slate-500">
-                Active borrowals this month
+                Frequent borrowers this month
               </p>
               <div className="flex items-center gap-1 text-xs text-slate-400">
                 <TrendingUp className="h-3 w-3" />
-                {predictions.borrowingPatterns.trend}
+                {predictions.borrowingPatterns.overdueTrend}
               </div>
             </div>
           </CardContent>
@@ -269,11 +265,10 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
                 </div>
               </div>
               <div className="pt-3 border-t">
-                <h4 className="text-sm font-semibold mb-2">Insights</h4>
                 <div className="space-y-1 text-sm text-slate-600">
-                  {predictions.borrowingPatterns.insights.map((insight, index) => (
-                    <p key={index}>• {insight}</p>
-                  ))}
+                  <p>• Overdue rate: {Math.round(predictions.borrowingPatterns.overdueRate || 0)}%</p>
+                  <p>• Return delay: {predictions.borrowingPatterns.averageReturnDelay || 0} days</p>
+                  <p>• Frequency: {predictions.borrowingPatterns.borrowingFrequency}</p>
                 </div>
               </div>
             </div>
@@ -291,23 +286,21 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {predictions.categoryPerformance.categoryMetrics.slice(0, 4).map((category, index) => (
+              {predictions.categoryPerformance.topPerforming.slice(0, 4).map((category, index) => (
                 <div key={index} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{category.name}</span>
-                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getHealthColor(category.health)}`}>
-                      {category.health}
-                    </div>
+                    <span className="font-medium">{category.category}</span>
+                    <Badge variant="outline">{Math.round(category.borrowRate)}% rate</Badge>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2">
                     <div
                       className="bg-purple-500 h-2 rounded-full transition-all"
-                      style={{ width: `${category.utilizationRate * 100}%` }}
+                      style={{ width: `${Math.min(category.borrowRate, 100)}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500">
-                    <span>{category.bookCount} books</span>
-                    <span>{Math.round(category.utilizationRate * 100)}% utilized</span>
+                    <span>{category.totalBooks} books</span>
+                    <span>{Math.round(category.borrowRate)}% borrow rate</span>
                   </div>
                 </div>
               ))}
@@ -316,7 +309,7 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
         </Card>
       </div>
 
-      {predictions.acquisitionRecommendations.booksToAcquire.length > 0 && (
+      {predictions.acquisitionRecommendations.recommendedPurchases.length > 0 && (
         <Card className="border-none shadow-md">
           <CardHeader className="pb-4">
             <CardTitle className="text-base flex items-center gap-2">
@@ -328,7 +321,7 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {predictions.acquisitionRecommendations.booksToAcquire.slice(0, 5).map((book, index) => (
+              {predictions.acquisitionRecommendations.recommendedPurchases.slice(0, 5).map((book, index) => (
                 <div key={index} className="flex items-start justify-between gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex-1">
                     <p className="text-sm font-medium text-amber-900">{book.title}</p>
@@ -338,13 +331,13 @@ export default function LibraryPredictionsCard({ predictions, isLoading }: Libra
                     </p>
                   </div>
                   <Badge variant="outline" className="border-amber-300 text-amber-600 whitespace-nowrap">
-                    {book.recommendedCopies} copies
+                    ${book.estimatedCost}
                   </Badge>
                 </div>
               ))}
-              {predictions.acquisitionRecommendations.booksToAcquire.length > 5 && (
+              {predictions.acquisitionRecommendations.recommendedPurchases.length > 5 && (
                 <p className="text-xs text-slate-500 text-center">
-                  +{predictions.acquisitionRecommendations.booksToAcquire.length - 5} more recommendations
+                  +{predictions.acquisitionRecommendations.recommendedPurchases.length - 5} more recommendations
                 </p>
               )}
             </div>

@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       }
 
       case 'students': {
-        const [studentsByGrade, studentsBySection, attendanceByGrade] = await Promise.all([
+        const [studentsByGrade, studentsBySection, attendanceByGrade, grades, sections] = await Promise.all([
           db.student.groupBy({
             by: ['gradeId'],
             _count: true,
@@ -85,10 +85,9 @@ export async function GET(req: NextRequest) {
               }),
             },
           }),
+          db.grade.findMany(),
+          db.section.findMany(),
         ])
-
-        const grades = await db.grade.findMany()
-        const sections = await db.section.findMany()
 
         const studentsByGradeWithNames = studentsByGrade.map((s) => ({
           ...s,

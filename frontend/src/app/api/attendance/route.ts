@@ -121,11 +121,9 @@ export async function POST(req: Request) {
 
         const markedBy = adminUser?.id || 'cmk5xc4xt0011vqu49ighb5a6'
 
-        for (const item of attendanceData) {
+        // Batch operations for parallel execution
+        const operations = attendanceData.map(async (item: any) => {
             if (item.status === 'Unmarked') {
-                // Delete existing record if setting to Unmarked
-                // We use deleteMany to be safe with date ranges, though unique constraint exists
-                // Ideally delete({ where: { studentId_date: ... } })
                 try {
                     await db.attendance.delete({
                         where: {
@@ -136,7 +134,6 @@ export async function POST(req: Request) {
                         }
                     })
                 } catch (e) {
-                    // Ignore if record doesn't exist
                 }
             } else {
                 await db.attendance.upsert({
@@ -157,7 +154,9 @@ export async function POST(req: Request) {
                     }
                 })
             }
-        }
+        })
+
+        await Promise.all(operations)
 
         return NextResponse.json({ success: true })
 
