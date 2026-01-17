@@ -7,7 +7,8 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next()
 
   if (request.nextUrl.pathname.startsWith("/api")) {
-    const rateLimitResult = await rateLimit(request)
+    const bypassRateLimit = request.nextUrl.pathname.startsWith("/api/library")
+    const rateLimitResult = bypassRateLimit ? { success: true, limit: 1000, remaining: 1000 } : await rateLimit(request)
 
     if (!rateLimitResult.success) {
       return new NextResponse(

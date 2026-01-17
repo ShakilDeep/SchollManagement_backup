@@ -154,11 +154,15 @@ export default function LibraryPage() {
   const fetchBooks = useCallback(async () => {
     try {
       const response = await fetch('/api/library/books')
+      if (!response.ok) throw new Error('Failed to fetch books')
       const data = await response.json()
-      setBooks(data)
-      calculateStats(data)
+      const booksData = Array.isArray(data) ? data : []
+      setBooks(booksData)
+      calculateStats(booksData)
     } catch (error) {
       console.error('Error fetching books:', error)
+      setBooks([])
+      calculateStats([])
     } finally {
       setLoading(false)
     }

@@ -674,23 +674,25 @@ model PasswordHistory {
   userId         String
   hashedPassword String
   createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
 
 model ApiKey {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  keyId       String   @unique
-  hashedKey   String
-  scopes      String
-  status      String   @default("ACTIVE")
-  expiresAt   DateTime?
-  lastUsedAt  DateTime?
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
-  revokedBy   String?
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  keyId     String   @unique
+  hashedKey String
+  scopes    String
+  status    String   @default("ACTIVE")
+  expiresAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  revokedBy String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([keyId])
