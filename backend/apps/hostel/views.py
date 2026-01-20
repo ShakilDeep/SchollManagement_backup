@@ -1,5 +1,4 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Hostel, Room, HostelAllocation
@@ -8,7 +7,6 @@ from .serializers import HostelSerializer, RoomSerializer, HostelAllocationSeria
 class HostelViewSet(viewsets.ModelViewSet):
     queryset = Hostel.objects.all()
     serializer_class = HostelSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status']
     search_fields = ['name', 'code', 'location', 'warden_name']
@@ -18,7 +16,6 @@ class HostelViewSet(viewsets.ModelViewSet):
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.select_related('hostel').all()
     serializer_class = RoomSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['hostel', 'floor']
     search_fields = ['room_number']
@@ -28,7 +25,6 @@ class RoomViewSet(viewsets.ModelViewSet):
 class HostelAllocationViewSet(viewsets.ModelViewSet):
     queryset = HostelAllocation.objects.select_related('student', 'room', 'room__hostel').all()
     serializer_class = HostelAllocationSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['student', 'room', 'status', 'academic_year']
     search_fields = ['student__first_name', 'student__last_name']

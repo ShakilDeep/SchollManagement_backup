@@ -1,5 +1,4 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Vehicle, TransportAllocation
@@ -8,7 +7,6 @@ from .serializers import VehicleSerializer, TransportAllocationSerializer
 class VehicleViewSet(viewsets.ModelViewSet):
     queryset = Vehicle.objects.all()
     serializer_class = VehicleSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'vehicle_type']
     search_fields = ['vehicle_number', 'driver_name', 'driver_phone', 'route']
@@ -18,7 +16,6 @@ class VehicleViewSet(viewsets.ModelViewSet):
 class TransportAllocationViewSet(viewsets.ModelViewSet):
     queryset = TransportAllocation.objects.select_related('student', 'vehicle').all()
     serializer_class = TransportAllocationSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['student', 'vehicle', 'status', 'academic_year']
     search_fields = ['student__first_name', 'student__last_name', 'pickup_point', 'drop_point']

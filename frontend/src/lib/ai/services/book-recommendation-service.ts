@@ -1,4 +1,4 @@
-import { db } from '@/lib/db';
+import { fetchAPI } from '@/lib/api/client';
 
 interface BorrowHistory {
   bookId: string;
@@ -41,32 +41,23 @@ interface RecommendationResult {
 
 export class BookRecommendationService {
   async analyzeBorrowHistory(studentId: string): Promise<BorrowHistory[]> {
-    const borrowals = await db.libraryBorrowal.findMany({
-      where: { studentId },
-      include: {
-        book: {
-          select: {
-            id: true,
-            isbn: true,
-            title: true,
-            author: true,
-            category: true
-          }
-        }
-      },
-      orderBy: { borrowDate: 'desc' },
-      take: 50
-    });
+    try {
+      const response = await fetchAPI<{ results: any[] }>(`/library/borrowals/?student=${studentId}`)
+      const borrowals = response.results || []
 
-    return borrowals.map(borrowal => ({
-      bookId: borrowal.bookId,
-      title: borrowal.book.title,
-      author: borrowal.book.author,
-      category: borrowal.book.category,
-      borrowDate: borrowal.borrowDate,
-      returnDate: borrowal.returnDate,
-      status: borrowal.status
-    }));
+      return borrowals.slice(0, 50).map((borrowal: any) => ({
+        bookId: borrowal.book || borrowal.bookId,
+        title: borrowal.book_title || borrowal.book?.title || 'Unknown',
+        author: borrowal.book_author || borrowal.book?.author || 'Unknown',
+        category: borrowal.book_category || borrowal.book?.category || 'General',
+        borrowDate: new Date(borrowal.borrow_date || borrowal.borrowDate),
+        returnDate: borrowal.return_date ? new Date(borrowal.return_date) : null,
+        status: borrowal.status || 'Borrowed'
+      }))
+    } catch (error) {
+      console.error('Error analyzing borrow history from backend API:', error)
+      return []
+    }
   }
 
   calculateCategoryPreferences(history: BorrowHistory[]): CategoryPreference[] {
@@ -114,56 +105,62 @@ export class BookRecommendationService {
     return Math.round(totalDays / returned.length);
   }
 
-  findMatchingBooks(
+  async findMatchingBooks(
     preferences: CategoryPreference[],
     borrowedBookIds: string[],
     frequency: 'high' | 'medium' | 'low'
   ): Promise<BookMatch[]> {
-    const preferredCategories = preferences.slice(0, 3).map(p => p.category);
+    try {
+      const response = await fetchAPI<{ results: any[] }>('/library/books/')
+      const books = response.results || []
 
-    return db.book.findMany({
-      where: {
-        AND: [
-          { availableCopies: { gt: 0 } },
-          { id: { notIn: borrowedBookIds } },
-          {
-            OR: [
-              { category: { in: preferredCategories } },
-              { category: { in: ['Fiction', 'Science', 'History', 'Biography'] } }
-            ]
+      const preferredCategories = preferences.slice(0, 3).map(p => p.category)
+
+      return books
+        .filter((book: any) => {
+          const availableCopies = book.available_copies || book.availableCopies || 0
+          const category = book.category || 'General'
+
+          return (
+            availableCopies > 0 &&
+            !borrowedBookIds.includes(book.id) &&
+            (preferredCategories.includes(category) || ['Fiction', 'Science', 'History', 'Biography'].includes(category))
+          )
+        })
+        .slice(0, 10)
+        .map((book: any) => {
+          const category = book.category || 'General'
+          const prefIndex = preferences.findIndex(p => p.category === category)
+          const categoryScore = prefIndex !== -1 ? (3 - prefIndex) * 30 : 10
+          const availableCopies = book.available_copies || book.availableCopies || 0
+          const availabilityScore = Math.min(availableCopies * 5, 30)
+          const frequencyBonus = frequency === 'high' ? 20 : frequency === 'medium' ? 10 : 0
+
+          let matchReason = ''
+          if (prefIndex !== -1) {
+            matchReason = `Matches your interest in ${category} books`
+          } else if (['Fiction', 'Science', 'History', 'Biography'].includes(category)) {
+            matchReason = `Popular ${category} book to explore`
+          } else {
+            matchReason = `Available ${category} book`
           }
-        ]
-      },
-      take: 10,
-      orderBy: { availableCopies: 'desc' }
-    }).then(books => {
-      return books.map(book => {
-        const prefIndex = preferences.findIndex(p => p.category === book.category);
-        const categoryScore = prefIndex !== -1 ? (3 - prefIndex) * 30 : 10;
-        const availabilityScore = Math.min(book.availableCopies * 5, 30);
-        const frequencyBonus = frequency === 'high' ? 20 : frequency === 'medium' ? 10 : 0;
 
-        let matchReason = '';
-        if (prefIndex !== -1) {
-          matchReason = `Matches your interest in ${book.category} books`;
-        } else if (['Fiction', 'Science', 'History', 'Biography'].includes(book.category)) {
-          matchReason = `Popular ${book.category} book to explore`;
-        } else {
-          matchReason = `Available ${book.category} book`;
-        }
-
-        return {
-          bookId: book.id,
-          isbn: book.isbn,
-          title: book.title,
-          author: book.author,
-          category: book.category,
-          availableCopies: book.availableCopies,
-          matchScore: categoryScore + availabilityScore + frequencyBonus,
-          matchReason
-        };
-      }).sort((a, b) => b.matchScore - a.matchScore);
-    });
+          return {
+            bookId: book.id,
+            isbn: book.isbn || '',
+            title: book.title || 'Unknown',
+            author: book.author || 'Unknown',
+            category,
+            availableCopies,
+            matchScore: categoryScore + availabilityScore + frequencyBonus,
+            matchReason
+          }
+        })
+        .sort((a, b) => b.matchScore - a.matchScore)
+    } catch (error) {
+      console.error('Error finding matching books from backend API:', error)
+      return []
+    }
   }
 
   calculateConfidence(

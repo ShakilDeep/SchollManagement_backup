@@ -19,7 +19,6 @@ import {
   MessageSquare,
   ScrollText,
   User,
-  LogOut,
   GraduationCap,
   ChevronRight,
   X,
@@ -205,9 +204,6 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-                  <button className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all">
-                    <LogOut className="w-5 h-5" />
-                  </button>
                 </div>
               </>
             )}

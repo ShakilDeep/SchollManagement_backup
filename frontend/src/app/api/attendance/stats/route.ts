@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { startOfDay, endOfDay, subDays, format } from 'date-fns'
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -11,79 +11,29 @@ export async function GET(req: Request) {
 
   if (!dateStr) return new NextResponse('Date required', { status: 400 })
 
-  const date = new Date(dateStr)
-  const todayStart = startOfDay(date)
-
   try {
-    const sevenDaysAgo = subDays(date, 6)
-    const sevenDaysAgoStart = startOfDay(sevenDaysAgo)
-    const todayEnd = endOfDay(date)
+    let formattedDate = dateStr
+    try {
+      const date = new Date(dateStr)
+      if (!isNaN(date.getTime())) {
+        formattedDate = date.toISOString().split('T')[0]
+      }
+    } catch (e) {
+    }
 
-    const totalStudents = await db.student.count({
-      where: { status: 'Active' }
-    })
-
-    const allAttendanceRecords = await db.attendance.findMany({
-      select: {
-        date: true,
-        status: true
+    const url = new URL('/api/attendance/stats/', BACKEND_URL)
+    url.searchParams.set('date', formattedDate)
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      where: {
-        date: {
-          gte: sevenDaysAgoStart,
-          lte: todayEnd
-        }
-      }
     })
-
-    const attendanceByDate = new Map<string, Record<string, number>>()
-    
-    for (let i = 0; i < 7; i++) {
-      const d = subDays(date, i)
-      const dateKey = d.toISOString().split('T')[0]
-      attendanceByDate.set(dateKey, {
-        Present: 0,
-        Absent: 0,
-        Late: 0,
-        HalfDay: 0
-      })
+    const data = await response.json()
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status })
     }
-
-    allAttendanceRecords.forEach(record => {
-      const dateKey = record.date.toISOString().split('T')[0]
-      const dayStats = attendanceByDate.get(dateKey)
-      if (dayStats && record.status in dayStats) {
-        dayStats[record.status]++
-      }
-    })
-
-    const trendData = []
-    for (let i = 6; i >= 0; i--) {
-      const d = subDays(date, i)
-      const dateKey = d.toISOString().split('T')[0]
-      const stats = attendanceByDate.get(dateKey) || {
-        Present: 0,
-        Absent: 0,
-        Late: 0,
-        HalfDay: 0
-      }
-
-      const effectivePresent = stats.Present + stats.Late + stats.HalfDay
-      const rate = totalStudents > 0 ? (effectivePresent / totalStudents) * 100 : 0
-
-      trendData.push({
-        date: d,
-        present: stats.Present,
-        absent: stats.Absent,
-        late: stats.Late,
-        halfDay: stats.HalfDay,
-        rate: Math.round(rate * 10) / 10
-      })
-    }
-
-    return NextResponse.json({
-      trends: trendData
-    })
+    return NextResponse.json(data)
   } catch (error) {
     console.error('[ATTENDANCE_STATS_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })

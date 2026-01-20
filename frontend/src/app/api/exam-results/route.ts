@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export const revalidate = 60
 
@@ -12,139 +12,74 @@ export async function GET(request: NextRequest) {
     const gradeId = searchParams.get('gradeId')
     const subjectId = searchParams.get('subjectId')
 
-    const whereConditions: any = {}
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (studentId) queryParams.student = studentId
+    if (examId) queryParams.exam = examId
 
-    if (examPaperId) {
-      whereConditions.examPaperId = examPaperId
-    } else if (examId) {
-      whereConditions.examPaper = {
-        examId: examId
-      }
-    }
-
-    if (studentId) {
-      whereConditions.studentId = studentId
-    }
-
-    if (gradeId) {
-      whereConditions.student = {
-        gradeId: gradeId
-      }
-    }
-
-    if (subjectId) {
-      whereConditions.examPaper = {
-        ...whereConditions.examPaper,
-        subjectId: subjectId
-      }
-    }
-
-    const results = await db.examResult.findMany({
-      where: whereConditions,
-      select: {
-        id: true,
-        studentId: true,
-        marksObtained: true,
-        percentage: true,
-        rank: true,
-        remarks: true,
-        examPaperId: true,
-        student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            rollNumber: true,
-            grade: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            section: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        },
-        examPaper: {
-          select: {
-            totalMarks: true,
-            passingMarks: true,
-            examDate: true,
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            exam: {
-              select: {
-                id: true,
-                name: true,
-                type: true,
-                status: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        percentage: 'desc'
-      }
-    })
+    const response = await fetchAPI<{ results: any[] }>(`/exam-results/`, { query: queryParams })
+    const backendResults = response.results || []
 
     // Transform data
-    const transformedResults = results.map((result, index) => ({
+    const transformedResults = backendResults.map((result: any, index: number) => ({
       id: result.id,
-      studentId: result.student.id,
-      studentName: `${result.student.firstName} ${result.student.lastName}`,
-      rollNumber: result.student.rollNumber,
-      subject: result.examPaper.subject.name,
-      subjectCode: result.examPaper.subject.code,
-      examName: result.examPaper.exam.name,
-      examType: result.examPaper.exam.type,
-      examStatus: result.examPaper.exam.status,
-      grade: result.student.grade.name,
-        section: result.student.section.name,
-        marksObtained: Math.round(result.marksObtained),
-      totalMarks: result.examPaper.totalMarks,
-      passingMarks: result.examPaper.passingMarks,
-      percentage: Math.round(result.percentage * 100) / 100,
+      studentId: result.student || result.studentId,
+      studentName: result.student_name || result.studentName || 'Unknown',
+      rollNumber: result.roll_number || result.rollNumber || '',
+      subject: result.subject_name || result.subject || 'Unknown',
+      subjectCode: result.subject_code || result.subjectCode || '',
+      examName: result.exam_name || result.examName || 'Unknown',
+      examType: result.exam_type || result.examType || 'Unknown',
+      examStatus: result.exam_status || result.examStatus || 'Unknown',
+      grade: result.grade_name || result.grade || 'Unknown',
+      section: result.section_name || result.section || 'Unknown',
+      marksObtained: Math.round(result.marks_obtained || result.marksObtained || 0),
+      totalMarks: result.total_marks || result.totalMarks || 100,
+      passingMarks: result.passing_marks || result.passingMarks || 40,
+      percentage: Math.round((result.percentage || 0) * 100) / 100,
       rank: result.rank || index + 1,
-      remarks: result.remarks,
-      examDate: result.examPaper.examDate.toISOString().split('T')[0],
-      examPaperId: result.examPaperId
+      remarks: result.remarks || '',
+      examDate: result.exam_date || result.examDate || new Date().toISOString().split('T')[0],
+      examPaperId: result.exam_paper || result.examPaperId || ''
     }))
+
+    // Filter by examPaperId, gradeId, or subjectId if provided (frontend-side filtering)
+    let filteredResults = transformedResults
+    if (examPaperId) {
+      filteredResults = filteredResults.filter(r => r.examPaperId === examPaperId)
+    }
+    if (gradeId) {
+      filteredResults = filteredResults.filter(r => r.grade === gradeId)
+    }
+    if (subjectId) {
+      filteredResults = filteredResults.filter(r => r.subject === subjectId)
+    }
 
     // Calculate statistics
     const stats = {
-      average: transformedResults.length > 0 
-        ? Math.round((transformedResults.reduce((sum, r) => sum + r.percentage, 0) / transformedResults.length) * 100) / 100
+      average: filteredResults.length > 0
+        ? Math.round((filteredResults.reduce((sum, r) => sum + r.percentage, 0) / filteredResults.length) * 100) / 100
         : 0,
-      highest: transformedResults.length > 0 
-        ? Math.max(...transformedResults.map(r => r.percentage))
+      highest: filteredResults.length > 0
+        ? Math.max(...filteredResults.map(r => r.percentage))
         : 0,
-      lowest: transformedResults.length > 0 
-        ? Math.min(...transformedResults.map(r => r.percentage))
+      lowest: filteredResults.length > 0
+        ? Math.min(...filteredResults.map(r => r.percentage))
         : 0,
-      passed: transformedResults.filter(r => r.percentage >= r.passingMarks).length,
-      failed: transformedResults.filter(r => r.percentage < r.passingMarks).length,
-      total: transformedResults.length
+      passed: filteredResults.filter(r => r.percentage >= (filteredResults[0]?.passingMarks || 40)).length,
+      failed: filteredResults.filter(r => r.percentage < (filteredResults[0]?.passingMarks || 40)).length,
+      total: filteredResults.length
     }
 
     return NextResponse.json({
-      results: transformedResults,
+      results: filteredResults,
       stats,
       examPaperId,
       examId
     })
 
   } catch (error) {
-    console.error('Error fetching exam results:', error)
+    console.error('Error fetching exam results from backend API:', error)
     return NextResponse.json(
       { error: 'Failed to fetch exam results' },
       { status: 500 }
@@ -164,34 +99,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create exam results
+    // Create exam results via backend API
     const createdResults = await Promise.all(
       results.map((result: any) =>
-        db.examResult.create({
-          data: {
-            studentId: result.studentId,
-            examPaperId,
-            marksObtained: result.marksObtained,
+        fetchAPI('/exam-results/', {
+          method: 'POST',
+          body: JSON.stringify({
+            student: result.studentId,
+            exam_paper: examPaperId,
+            marks_obtained: result.marksObtained,
+            total_marks: result.totalMarks,
             percentage: (result.marksObtained / result.totalMarks) * 100,
             grade: result.grade,
             remarks: result.remarks
-          }
+          })
         })
       )
     )
-
-    // Calculate and update ranks
-    const allResults = await db.examResult.findMany({
-      where: { examPaperId },
-      orderBy: { percentage: 'desc' }
-    })
-
-    for (let i = 0; i < allResults.length; i++) {
-      await db.examResult.update({
-        where: { id: allResults[i].id },
-        data: { rank: i + 1 }
-      })
-    }
 
     return NextResponse.json({
       message: 'Exam results created successfully',

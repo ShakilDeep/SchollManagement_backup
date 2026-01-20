@@ -1,25 +1,26 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET() {
   try {
-    const allocations = await db.transportAllocation.findMany({
-      include: {
-        vehicle: true,
-        student: {
-          include: {
-            grade: true,
-          },
-        },
-      },
-      orderBy: {
-        vehicle: {
-          vehicleNumber: 'asc',
-        },
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/transport/allocations/')
+    const allocations = response.results || []
 
-    return NextResponse.json(allocations)
+    const transformedAllocations = allocations.map((a: any) => ({
+      id: a.id,
+      vehicleId: a.vehicle || a.vehicleId,
+      studentId: a.student || a.studentId,
+      pickupPoint: a.pickup_point || a.pickupPoint,
+      pickupTime: a.pickup_time || a.pickupTime,
+      dropPoint: a.drop_point || a.dropPoint,
+      dropTime: a.drop_time || a.dropTime,
+      academicYearId: a.academic_year || a.academicYearId,
+      fees: a.fees,
+      vehicle: a.vehicle_details || a.vehicle,
+      student: a.student_details || a.student,
+    }))
+
+    return NextResponse.json(transformedAllocations)
   } catch (error) {
     console.error('[ALLOCATIONS_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })
@@ -44,17 +45,18 @@ export async function POST(req: Request) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    const allocation = await db.transportAllocation.create({
-      data: {
-        vehicleId,
-        studentId,
-        pickupPoint,
-        pickupTime,
-        dropPoint,
-        dropTime,
-        academicYearId,
+    const allocation = await fetchAPI('/transport/allocations/', {
+      method: 'POST',
+      body: JSON.stringify({
+        vehicle: vehicleId,
+        student: studentId,
+        pickup_point: pickupPoint,
+        pickup_time: pickupTime,
+        drop_point: dropPoint,
+        drop_time: dropTime,
+        academic_year: academicYearId,
         fees: fees ? parseFloat(fees) : null,
-      },
+      })
     })
 
     return NextResponse.json(allocation)

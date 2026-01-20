@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getResourceConfigByPlural, getResourceConfig } from '@/lib/api/base/resource-configs'
-import { createCRUDRoute } from '@/lib/api/base/crud-factory'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 function toCamelCase(str: string): string {
   return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase())
@@ -20,12 +19,9 @@ export async function GET(
   }
 
   try {
-    const model = db[config.model as keyof typeof db] as any
-    const data = await model.findUnique({
-      where: { id },
-      include: config.include,
-      select: config.select,
-    })
+    // Use backend API endpoint
+    const endpoint = `/${config.endpoint || resource}/${id}/`
+    const data = await fetchAPI<any>(endpoint)
 
     if (!data) {
       return new Response('Not found', { status: 404 })
@@ -54,12 +50,27 @@ export async function PUT(
     return new Response('Resource not found', { status: 404 })
   }
 
-  const handlers = createCRUDRoute(config)
-  if (!handlers.PUT) {
-    return new Response('Method not allowed', { status: 405 })
-  }
+  try {
+    const endpoint = `/${config.endpoint || resource}/${id}/`
+    const body = await request.json()
 
-  return handlers.PUT(request, { id })
+    // Transform data if needed
+    const transformedBody = config.transformUpdate ? config.transformUpdate(body) : body
+
+    const data = await fetchAPI(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(transformedBody)
+    })
+
+    const transformed = config.transformResponse ? config.transformResponse(data) : data
+    return Response.json({ success: true, data: transformed })
+  } catch (error: any) {
+    console.error('Error updating resource:', error)
+    return Response.json(
+      { success: false, error: { message: error.message || 'Failed to update resource' } },
+      { status: 500 }
+    )
+  }
 }
 
 export async function PATCH(
@@ -74,12 +85,27 @@ export async function PATCH(
     return new Response('Resource not found', { status: 404 })
   }
 
-  const handlers = createCRUDRoute(config)
-  if (!handlers.PATCH) {
-    return new Response('Method not allowed', { status: 405 })
-  }
+  try {
+    const endpoint = `/${config.endpoint || resource}/${id}/`
+    const body = await request.json()
 
-  return handlers.PATCH(request, { id })
+    // Transform data if needed
+    const transformedBody = config.transformUpdate ? config.transformUpdate(body) : body
+
+    const data = await fetchAPI(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(transformedBody)
+    })
+
+    const transformed = config.transformResponse ? config.transformResponse(data) : data
+    return Response.json({ success: true, data: transformed })
+  } catch (error: any) {
+    console.error('Error updating resource:', error)
+    return Response.json(
+      { success: false, error: { message: error.message || 'Failed to update resource' } },
+      { status: 500 }
+    )
+  }
 }
 
 export async function DELETE(
@@ -94,10 +120,19 @@ export async function DELETE(
     return new Response('Resource not found', { status: 404 })
   }
 
-  const handlers = createCRUDRoute(config)
-  if (!handlers.DELETE) {
-    return new Response('Method not allowed', { status: 405 })
-  }
+  try {
+    const endpoint = `/${config.endpoint || resource}/${id}/`
 
-  return handlers.DELETE(request, { id })
+    await fetchAPI(endpoint, {
+      method: 'DELETE'
+    })
+
+    return Response.json({ success: true })
+  } catch (error: any) {
+    console.error('Error deleting resource:', error)
+    return Response.json(
+      { success: false, error: { message: error.message || 'Failed to delete resource' } },
+      { status: 500 }
+    )
+  }
 }

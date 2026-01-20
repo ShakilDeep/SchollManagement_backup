@@ -1,40 +1,22 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET() {
   try {
-    const borrowals = await db.libraryBorrowal.findMany({
-      include: {
-        book: {
-          select: {
-            title: true,
-            isbn: true,
-          },
-        },
-        student: {
-          select: {
-            firstName: true,
-            lastName: true,
-            rollNumber: true,
-          },
-        },
-      },
-      orderBy: {
-        borrowDate: 'desc',
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/library/borrowals/')
+    const borrowals = response.results || []
 
-    const formattedBorrowals = borrowals.map((borrowal) => ({
-      id: borrowal.id,
-      bookTitle: borrowal.book.title,
-      bookIsbn: borrowal.book.isbn,
-      studentName: `${borrowal.student.firstName} ${borrowal.student.lastName}`,
-      studentRollNumber: borrowal.student.rollNumber,
-      borrowDate: borrowal.borrowDate.toISOString().split('T')[0],
-      dueDate: borrowal.dueDate.toISOString().split('T')[0],
-      returnDate: borrowal.returnDate?.toISOString().split('T')[0] || null,
-      status: borrowal.status,
-      fine: borrowal.fine,
+    const formattedBorrowals = borrowals.map((b: any) => ({
+      id: b.id,
+      bookTitle: b.book_title || b.bookTitle || 'Unknown',
+      bookIsbn: b.book_isbn || b.bookIsbn || '',
+      studentName: b.student_name || b.studentName || 'Unknown',
+      studentRollNumber: b.roll_number || b.rollNumber || '',
+      borrowDate: b.borrow_date || b.borrowDate || new Date().toISOString().split('T')[0],
+      dueDate: b.due_date || b.dueDate || '',
+      returnDate: b.return_date || b.returnDate || null,
+      status: b.status || 'Borrowed',
+      fine: b.fine || b.fine_amount || 0
     }))
 
     return NextResponse.json(formattedBorrowals)
@@ -53,15 +35,14 @@ export async function POST(req: Request) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    const borrowal = await db.libraryBorrowal.create({
-      data: {
-        bookId,
-        studentId,
-        borrowDate: new Date(),
-        dueDate: new Date(dueDate),
-        status: 'Borrowed',
-        remarks,
-      },
+    const borrowal = await fetchAPI('/library/borrowals/', {
+      method: 'POST',
+      body: JSON.stringify({
+        book: bookId,
+        student: studentId,
+        due_date: dueDate,
+        remarks
+      })
     })
 
     return NextResponse.json(borrowal)

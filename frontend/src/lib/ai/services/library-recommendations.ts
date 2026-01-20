@@ -1,5 +1,5 @@
 import { GeminiClient } from '../gemini-client'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 import { validateStudentData, validateLibraryData } from '../utils/data-validation'
 
 interface Book {
@@ -7,30 +7,34 @@ interface Book {
   isbn: string
   title: string
   author: string
+  genre: string
   category: string
-  totalCopies: number
-  availableCopies: number
-  location: string
-  publisher?: string
-  publicationYear?: number
-}
-
-interface BorrowingHistory {
-  id: string
-  bookTitle: string
-  bookIsbn: string
-  borrowDate: string
-  returnDate?: string
-  status: 'Borrowed' | 'Returned' | 'Overdue'
+  subgenres: string[]
+  difficulty: 'easy' | 'medium' | 'hard'
+  pageCount: number
+  availability: 'available' | 'borrowed'
+  ageGroup: string[]
+  topics: string[]
+  awards: string[]
 }
 
 interface StudentProfile {
   id: string
-  firstName: string
-  lastName: string
+  name: string
   grade: string
-  section: string
-  rollNumber: string
+  interests: string[]
+  readingLevel: 'beginner' | 'intermediate' | 'advanced'
+  recentBooksRead: Array<{
+    title: string
+    author: string
+    genre: string
+    rating: number
+    dateRead: string
+  }>
+  academicPerformance?: {
+    subjects: Record<string, number>
+    average: number
+  }
 }
 
 interface BookRecommendation {
@@ -50,6 +54,17 @@ interface RecommendationResponse {
     preferredCategories: string[]
     readingFrequency: string
   }
+}
+
+interface LibraryInventory {
+  books: Book[]
+}
+
+interface CurriculumRecommendations {
+  recommendations: BookRecommendation[]
+  subject: string
+  strength: number
+  improvementAreas: string[]
 }
 
 export class LibraryRecommendationsService {
@@ -76,195 +91,45 @@ export class LibraryRecommendationsService {
     this.dataCache.set(key, { data, timestamp: Date.now() })
   }
 
-  async loadAllBooks(): Promise<Book[]> {
-    const cacheKey = 'all_books'
-    const cached = this.getCachedData<Book[]>(cacheKey)
-    if (cached) return cached
-
-    const books = await db.book.findMany({
-      select: {
-        id: true,
-        isbn: true,
-        title: true,
-        author: true,
-        publisher: true,
-        category: true,
-        language: true,
-        pageCount: true,
-        totalCopies: true,
-        availableCopies: true,
-        location: true,
-        description: true
-      }
-    })
-
-    this.setCachedData(cacheKey, books)
-    return books
-  }
-
-  async loadStudentBorrowingHistory(studentId: string): Promise<BorrowingHistory[]> {
-    const cacheKey = `borrowing_history_${studentId}`
-    const cached = this.getCachedData<BorrowingHistory[]>(cacheKey)
-    if (cached) return cached
-
-    const borrowals = await db.libraryBorrowal.findMany({
-      where: { studentId },
-      include: {
-        book: {
-          select: {
-            id: true,
-            isbn: true,
-            title: true,
-            author: true,
-            category: true,
-            language: true
-          }
-        }
-      },
-      orderBy: { borrowDate: 'desc' },
-      take: 50
-    })
-
-    const history: BorrowingHistory[] = borrowals.map(b => ({
-      id: b.id,
-      bookId: b.bookId,
-      bookTitle: b.book.title,
-      bookAuthor: b.book.author,
-      bookCategory: b.book.category,
-      borrowDate: b.borrowDate.toISOString(),
-      returnDate: b.returnDate?.toISOString() || null,
-      dueDate: b.dueDate.toISOString(),
-      isReturned: b.returnDate !== null,
-      isOverdue: b.returnDate === null && b.dueDate < new Date()
-    }))
-
-    this.setCachedData(cacheKey, history)
-    return history
-  }
-
-  async loadStudentProfile(studentId: string): Promise<StudentProfile> {
-    const cacheKey = `student_profile_${studentId}`
-    const cached = this.getCachedData<StudentProfile>(cacheKey)
-    if (cached) return cached
-
-    const [student, examResults] = await Promise.all([
-      db.student.findUnique({
-        where: { id: studentId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          rollNumber: true,
-          grade: { select: { name: true } },
-          section: { select: { name: true } }
-        }
-      }),
-      db.examResult.findMany({
-        where: { studentId },
-        include: {
-          examPaper: {
-            include: {
-              subject: { select: { name: true } }
-            }
-          }
-        },
-        orderBy: {
-          examPaper: { examDate: 'desc' }
-        },
-        take: 10
-      })
-    ])
-
-    if (!student) {
-      throw new Error('Student not found')
-    }
-
-    const strongSubjects: string[] = []
-    const weakSubjects: string[] = []
-    const subjectPerformance = new Map<string, { sum: number; count: number }>()
-
-    examResults.forEach(r => {
-      const subject = r.examPaper.subject.name
-      if (!subjectPerformance.has(subject)) {
-        subjectPerformance.set(subject, { sum: 0, count: 0 })
-      }
-      const stats = subjectPerformance.get(subject)!
-      stats.sum += r.percentage
-      stats.count += 1
-    })
-
-    subjectPerformance.forEach((stats, subject) => {
-      const avg = stats.sum / stats.count
-      if (avg >= 80) strongSubjects.push(subject)
-      else if (avg < 60) weakSubjects.push(subject)
-    })
-
-    const profile: StudentProfile = {
-      id: student.id,
-      firstName: student.firstName,
-      lastName: student.lastName,
-      grade: student.grade.name,
-      section: student.section.name,
-      rollNumber: student.rollNumber,
-      strongSubjects,
-      weakSubjects,
-      averagePerformance: subjectPerformance.size > 0
-        ? Array.from(subjectPerformance.values()).reduce((acc, stats) => acc + stats.sum / stats.count, 0) / subjectPerformance.size
-        : 0
-    }
-
-    this.setCachedData(cacheKey, profile)
-    return profile
-  }
-
-  async analyzeStudentProfile(
+  async generateRecommendations(
     studentProfile: StudentProfile,
-    borrowingHistory: BorrowingHistory[],
-    allBooks: Book[]
-  ): Promise<RecommendationResponse> {
+    libraryInventory: LibraryInventory,
+    count: number = 5
+  ): Promise<BookRecommendation[]> {
     try {
       const prompt = `
-        You are a school librarian with expertise in recommending books based on student reading patterns. 
+        You are a school librarian with expertise in recommending books based on student reading patterns.
 
         Student Profile:
-        - Name: ${studentProfile.firstName} ${studentProfile.lastName}
-        - Grade: ${studentProfile.grade} ${studentProfile.section}
-        - Roll Number: ${studentProfile.rollNumber}
+        - Name: ${studentProfile.name}
+        - Grade: ${studentProfile.grade}
+        - Reading Level: ${studentProfile.readingLevel}
+        - Interests: ${studentProfile.interests.join(', ')}
 
-        Borrowing History (${borrowingHistory.length} books):
-        ${borrowingHistory.map(h => `- ${h.bookTitle} (ISBN: ${h.bookIsbn}) - ${h.status}`).join('\n')}
+        Recently Read Books (${studentProfile.recentBooksRead.length} books):
+        ${studentProfile.recentBooksRead.map(b => `- ${b.title} by ${b.author} (${b.genre}) - Rating: ${b.rating}/5`).join('\n')}
 
-        Available Books (${allBooks.length} total):
-        ${allBooks.slice(0, 50).map(b => `- ${b.title} by ${b.author} (${b.category}) - ${b.availableCopies} copies available`).join('\n')}
+        Available Books (${libraryInventory.books.length} total):
+        ${libraryInventory.books.slice(0, 50).map(b => `- ${b.title} by ${b.author} (${b.genre}) - ${b.availability}`).join('\n')}
 
         Analyze this student's reading patterns and provide personalized book recommendations. Consider:
         1. Reading level appropriate for grade ${studentProfile.grade}
-        2. Categories they've shown interest in
-        3. Reading frequency and patterns
-        4. Book availability (only recommend books with available copies)
+        2. Categories they've shown interest in (${studentProfile.interests.join(', ')})
+        3. Reading frequency based on recent history
+        4. Book availability (only recommend books that are available)
 
         For each recommendation, provide:
-        - Book title, author, and category
+        - Book title, author, and genre
         - Why this book is recommended for this specific student
         - Match score (0.1-1.0) indicating how well it fits
         - Whether it matches their preferred categories
         - Whether they've read the same author before
 
-        Respond in JSON format:
+        Respond in JSON format with ${count} recommendations:
         {
-          "analysis": {
-            "readingLevel": string,
-            "preferredCategories": string[],
-            "readingFrequency": string
-          },
           "recommendations": [
             {
-              "book": {
-                "title": string,
-                "author": string,
-                "category": string,
-                "isbn": string
-              },
+              "book": { "title": string, "author": string, "genre": string },
               "reason": string,
               "matchScore": number,
               "categoryMatch": boolean,
@@ -272,14 +137,11 @@ export class LibraryRecommendationsService {
             }
           ]
         }
-
-        Provide 5-8 recommendations. Focus on books that are currently available.
       `
 
       const result = await this.client.generateJSON<{
-        analysis: RecommendationResponse['analysis']
         recommendations: Array<{
-          book: { title: string; author: string; category: string; isbn: string }
+          book: { title: string; author: string; genre: string }
           reason: string
           matchScore: number
           categoryMatch: boolean
@@ -288,149 +150,253 @@ export class LibraryRecommendationsService {
       }>(prompt)
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to analyze student profile')
+        return this.generateFallbackRecommendations(studentProfile, libraryInventory, count)
       }
 
-      const recommendations: BookRecommendation[] = result.data.recommendations.map(rec => {
-        const book = allBooks.find(b => b.title === rec.book.title && b.author === rec.book.author)
-        if (!book) return null
+      const recommendations: BookRecommendation[] = result.data.recommendations
+        .slice(0, count)
+        .map(rec => {
+          const book = libraryInventory.books.find(b => b.title === rec.book.title && b.author === rec.book.author)
+          if (!book) return null
 
-        return {
-          book,
-          reason: rec.reason,
-          matchScore: rec.matchScore,
-          categoryMatch: rec.categoryMatch,
-          authorMatch: rec.authorMatch
-        }
-      }).filter((rec): rec is BookRecommendation => rec !== null)
+          return {
+            book,
+            reason: rec.reason,
+            matchScore: rec.matchScore,
+            categoryMatch: rec.categoryMatch,
+            authorMatch: rec.authorMatch
+          }
+        })
+        .filter((rec): rec is BookRecommendation => rec !== null)
 
-      return {
-        student: studentProfile,
-        recommendations,
-        totalRecommendations: recommendations.length,
-        analysis: result.data.analysis
-      }
+      return recommendations.length > 0 ? recommendations : this.generateFallbackRecommendations(studentProfile, libraryInventory, count)
     } catch (error) {
-      return this.generateFallbackRecommendations(studentProfile, borrowingHistory, allBooks)
+      console.error('Error generating book recommendations:', error)
+      return this.generateFallbackRecommendations(studentProfile, libraryInventory, count)
+    }
+  }
+
+  async generateCurriculumRecommendations(
+    studentProfile: StudentProfile,
+    libraryInventory: LibraryInventory,
+    subject: string
+  ): Promise<BookRecommendation[]> {
+    try {
+      const subjectPerformance = studentProfile.academicPerformance?.subjects[subject] || 0
+      const needsImprovement = subjectPerformance < 70
+
+      const prompt = `
+        You are a school librarian helping a student find books for ${subject} studies.
+
+        Student Profile:
+        - Name: ${studentProfile.name}
+        - Grade: ${studentProfile.grade}
+        - Reading Level: ${studentProfile.readingLevel}
+        - ${subject} Performance: ${subjectPerformance}%
+        - Needs Improvement: ${needsImprovement ? 'Yes' : 'No'}
+
+        Available Books (${libraryInventory.books.length} total):
+        ${libraryInventory.books.filter(b => b.topics.includes(subject) || b.genre.toLowerCase().includes(subject.toLowerCase())).slice(0, 30).map(b => `- ${b.title} by ${b.author} (${b.genre}) - ${b.availability}`).join('\n')}
+
+        Recommend 5 books that will help this student with ${subject}. Consider:
+        1. Current performance level (${subjectPerformance}%)
+        2. Reading level (${studentProfile.readingLevel})
+        3. Books appropriate for grade ${studentProfile.grade}
+        4. Only available books
+
+        ${needsImprovement ? 'Focus on foundational and supportive materials to help improve understanding.' : 'Focus on advanced materials to further strengthen understanding.'}
+
+        Respond in JSON format:
+        {
+          "recommendations": [
+            {
+              "book": { "title": string, "author": string, "genre": string },
+              "reason": string,
+              "matchScore": number,
+              "categoryMatch": boolean,
+              "authorMatch": boolean
+            }
+          ]
+        }
+      `
+
+      const result = await this.client.generateJSON<{
+        recommendations: Array<{
+          book: { title: string; author: string; genre: string }
+          reason: string
+          matchScore: number
+          categoryMatch: boolean
+          authorMatch: boolean
+        }>
+      }>(prompt)
+
+      if (!result.success) {
+        return this.generateFallbackRecommendations(studentProfile, libraryInventory, 5, subject)
+      }
+
+      const recommendations: BookRecommendation[] = result.data.recommendations
+        .map(rec => {
+          const book = libraryInventory.books.find(b => b.title === rec.book.title && b.author === rec.book.author)
+          if (!book) return null
+
+          return {
+            book,
+            reason: rec.reason,
+            matchScore: rec.matchScore,
+            categoryMatch: rec.categoryMatch,
+            authorMatch: rec.authorMatch
+          }
+        })
+        .filter((rec): rec is BookRecommendation => rec !== null)
+
+      return recommendations.length > 0 ? recommendations : this.generateFallbackRecommendations(studentProfile, libraryInventory, 5, subject)
+    } catch (error) {
+      console.error('Error generating curriculum recommendations:', error)
+      return this.generateFallbackRecommendations(studentProfile, libraryInventory, 5, subject)
     }
   }
 
   private generateFallbackRecommendations(
     studentProfile: StudentProfile,
-    borrowingHistory: BorrowingHistory[],
-    allBooks: Book[]
-  ): RecommendationResponse {
-    const borrowedCategories = new Set<string>()
-    borrowingHistory.forEach(h => {
-      const book = allBooks.find(b => b.isbn === h.bookIsbn)
-      if (book) borrowedCategories.add(book.category)
-    })
+    libraryInventory: LibraryInventory,
+    count: number,
+    subjectFilter?: string
+  ): BookRecommendation[] {
+    const borrowedCategories = new Set(studentProfile.interests)
+    const preferredCategories = borrowedCategories.size > 0
+      ? Array.from(borrowedCategories)
+      : ['Computer Science', 'Programming', 'Science', 'Mathematics', 'Literature']
 
-    const preferredCategories = borrowedCategories.size > 0 
-      ? Array.from(borrowedCategories) 
-      : ['Computer Science', 'Programming', 'Science', 'Mathematics']
+    const availableBooks = libraryInventory.books.filter(b => b.availability === 'available')
 
-    const readingFrequency = borrowingHistory.length > 5 ? 'High' 
-      : borrowingHistory.length > 2 ? 'Medium' 
-      : 'Low'
+    let filteredBooks = availableBooks
+    if (subjectFilter) {
+      filteredBooks = availableBooks.filter(b =>
+        b.topics.includes(subjectFilter) ||
+        b.genre.toLowerCase().includes(subjectFilter.toLowerCase()) ||
+        preferredCategories.some(cat => b.genre.toLowerCase().includes(cat.toLowerCase()))
+      )
+    } else {
+      filteredBooks = availableBooks.filter(book =>
+        preferredCategories.some(cat => book.genre.toLowerCase().includes(cat.toLowerCase()))
+      )
+    }
 
-    const availableBooks = allBooks.filter(b => b.availableCopies > 0)
-
-    const recommendations: BookRecommendation[] = availableBooks
-      .filter(book => preferredCategories.includes(book.category))
-      .sort((a, b) => b.availableCopies - a.availableCopies)
-      .slice(0, 8)
+    const recommendations: BookRecommendation[] = filteredBooks
+      .sort((a, b) => {
+        // Prefer easier books for struggling students
+        if (studentProfile.readingLevel === 'beginner') {
+          return a.difficulty === 'easy' ? -1 : b.difficulty === 'easy' ? 1 : 0
+        }
+        return 0
+      })
+      .slice(0, count)
       .map(book => ({
         book,
-        reason: this.generateFallbackReason(book, studentProfile, preferredCategories),
-        matchScore: preferredCategories.includes(book.category) ? 0.8 : 0.6,
-        categoryMatch: preferredCategories.includes(book.category),
-        authorMatch: borrowingHistory.some(h => {
-          const borrowedBook = allBooks.find(b => b.isbn === h.bookIsbn)
-          return borrowedBook?.author === book.author
-        })
+        reason: this.generateFallbackReason(book, studentProfile, preferredCategories, subjectFilter),
+        matchScore: preferredCategories.some(cat => book.genre.toLowerCase().includes(cat.toLowerCase())) ? 0.8 : 0.6,
+        categoryMatch: preferredCategories.some(cat => book.genre.toLowerCase().includes(cat.toLowerCase())),
+        authorMatch: studentProfile.recentBooksRead.some(h => h.author === book.author)
       }))
 
-    return {
-      student: studentProfile,
-      recommendations,
-      totalRecommendations: recommendations.length,
-      analysis: {
-        readingLevel: this.determineReadingLevel(studentProfile.grade),
-        preferredCategories,
-        readingFrequency
-      }
-    }
+    return recommendations
   }
 
   private generateFallbackReason(
     book: Book,
     student: StudentProfile,
-    preferredCategories: string[]
+    preferredCategories: string[],
+    subjectFilter?: string
   ): string {
-    const categoryMatch = preferredCategories.includes(book.category)
-    const gradeLevel = parseInt(student.grade.replace(/\D/g, '')) || 1
+    const categoryMatch = preferredCategories.some(cat => book.genre.toLowerCase().includes(cat.toLowerCase()))
+
+    if (subjectFilter) {
+      const performance = student.academicPerformance?.subjects[subjectFilter] || 0
+      if (performance < 70) {
+        return `This ${book.genre} book provides excellent foundational support for ${subjectFilter}. Perfect for building your understanding at your own pace.`
+      }
+      return `Expand your knowledge with this comprehensive ${book.genre} resource. Ideal for grade ${student.grade} students ready to advance.`
+    }
 
     if (categoryMatch) {
-      return `Matches your interest in ${book.category}. A great choice for grade ${gradeLevel} students.`
+      return `Matches your interest in ${book.genre}. A ${book.difficulty === 'easy' ? 'great starting point' : book.difficulty === 'hard' ? 'challenging choice' : 'solid choice'} for your reading level.`
     }
 
-    if (book.category === 'Computer Science' || book.category === 'Programming') {
-      return `Build your technical skills with this ${book.category} resource. Suitable for your grade level.`
+    if (student.readingLevel === 'beginner') {
+      return `An accessible ${book.genre} book that will help build your confidence. Perfect for expanding your reading horizons.`
     }
 
-    return `Expanding your horizons with ${book.category}. Available now and recommended for your grade level.`
-  }
-
-  private determineReadingLevel(grade: string): string {
-    const gradeLevel = parseInt(grade.replace(/\D/g, '')) || 1
-
-    if (gradeLevel <= 3) return 'Beginner'
-    if (gradeLevel <= 6) return 'Intermediate'
-    if (gradeLevel <= 9) return 'Advanced'
-    return 'Expert'
+    return `Explore new ideas with this ${book.genre} selection. Available now and suited to your grade level.`
   }
 
   async getRecommendationsForStudent(studentId: string): Promise<RecommendationResponse> {
-    const [profile, borrowingHistory, allBooks] = await Promise.all([
-      this.loadStudentProfile(studentId),
-      this.loadStudentBorrowingHistory(studentId),
-      this.loadAllBooks()
-    ])
+    try {
+      // Fetch student data from backend API
+      const [studentResponse, borrowalsResponse, booksResponse] = await Promise.all([
+        fetchAPI<any>(`/students/${studentId}/`),
+        fetchAPI<{ results: any[] }>(`/library/borrowals/?student=${studentId}`),
+        fetchAPI<{ results: any[] }>('/library/books/')
+      ])
 
-    const studentValidation = validateStudentData({
-      id: profile.studentId,
-      firstName: profile.name.split(' ')[0],
-      lastName: profile.name.split(' ').slice(1).join(' '),
-      grade: profile.grade,
-      section: profile.section
-    })
+      const student = studentResponse
+      const borrowals = borrowalsResponse.results || []
+      const allBooks = (booksResponse.results || []).map((b: any) => ({
+        id: b.id,
+        isbn: b.isbn || '',
+        title: b.title || 'Unknown',
+        author: b.author || 'Unknown',
+        genre: b.category || b.category_name || 'General',
+        category: b.category || b.category_name || 'General',
+        subgenres: [b.category || b.category_name || 'General'],
+        difficulty: 'medium' as const,
+        pageCount: b.pages || 200,
+        availability: (b.available_copies || b.availableCopies || 0) > 0 ? 'available' : 'borrowed',
+        ageGroup: [],
+        topics: [b.category || b.category_name || 'General'],
+        awards: []
+      }))
 
-    if (!studentValidation.isValid) {
-      console.warn('Student data validation warnings:', studentValidation.warnings)
+      // Get returned books for reading history
+      const returnedBorrowals = borrowals.filter((b: any) => b.returnDate || b.return_date)
+      const recentBooksRead = returnedBorrowals.map((b: any) => {
+        const book = allBooks.find(book => book.id === (b.book || b.bookId || b.book_id))
+        return {
+          title: book?.title || 'Unknown',
+          author: book?.author || 'Unknown',
+          genre: book?.genre || 'General',
+          rating: 4,
+          dateRead: (b.returnDate || b.return_date || '').toString().split('T')[0]
+        }
+      })
+
+      const interests = recentBooksRead.map(b => b.genre).filter((v, i, a) => a.indexOf(v) === i)
+
+      const studentProfile: StudentProfile = {
+        id: student.id,
+        name: `${student.first_name || student.firstName || ''} ${student.last_name || student.lastName || ''}`.trim(),
+        grade: student.grade_name || student.grade?.name || 'Unknown',
+        interests: interests.length > 0 ? interests : ['General'],
+        readingLevel: 'intermediate',
+        recentBooksRead
+      }
+
+      const recommendations = await this.generateRecommendations(studentProfile, { books: allBooks }, 5)
+
+      return {
+        student: studentProfile,
+        recommendations,
+        totalRecommendations: recommendations.length,
+        analysis: {
+          readingLevel: studentProfile.readingLevel,
+          preferredCategories: studentProfile.interests,
+          readingFrequency: recentBooksRead.length > 5 ? 'High' : recentBooksRead.length > 2 ? 'Medium' : 'Low'
+        }
+      }
+    } catch (error) {
+      console.error('Error getting recommendations for student:', error)
+      throw error
     }
-
-    const libraryValidation = validateLibraryData({
-      books: allBooks,
-      borrowingHistory: borrowingHistory
-    })
-
-    if (!libraryValidation.isValid) {
-      console.warn('Library data validation issues:', libraryValidation.issues)
-      console.warn('Library data validation warnings:', libraryValidation.warnings)
-    }
-
-    return this.analyzeStudentProfile(profile, borrowingHistory, allBooks)
-  }
-
-  async getRecommendationsForStudentLegacy(
-    studentId: string,
-    borrowingHistory: BorrowingHistory[],
-    allBooks: Book[]
-  ): Promise<RecommendationResponse> {
-    const profile = await this.loadStudentProfile(studentId)
-    return this.analyzeStudentProfile(profile, borrowingHistory, allBooks)
   }
 }
 
-export const libraryRecommendationsService = new LibraryRecommendationsService()
+export const libraryRecommendationService = new LibraryRecommendationsService()

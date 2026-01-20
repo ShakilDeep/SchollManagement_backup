@@ -1,5 +1,6 @@
 from django.db import models
 from apps.students.models import Grade, Section
+from apps.users.models import User
 import uuid
 
 class StaffType(models.TextChoices):
@@ -9,8 +10,8 @@ class StaffType(models.TextChoices):
     SUPPORT = 'SUPPORT', 'Support'
 
 class Staff(models.Model):
-    id = models.CharField(max_length=255, primary_key=True, default=uuid.uuid4, editable=False)
-    user_id = models.CharField(max_length=255)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='staff_profile', null=True, blank=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField()
@@ -44,6 +45,8 @@ class Staff(models.Model):
             models.Index(fields=['department']),
             models.Index(fields=['is_active']),
             models.Index(fields=['email']),
+            models.Index(fields=['join_date']),
+            models.Index(fields=['type', 'is_active']),
         ]
 
     def __str__(self):

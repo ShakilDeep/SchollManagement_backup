@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export const revalidate = 60
 
@@ -10,98 +10,45 @@ export async function GET(request: NextRequest) {
     const gradeId = searchParams.get('gradeId')
     const status = searchParams.get('status')
 
-    const currentYear = await db.academicYear.findFirst({
-      where: { isCurrent: true },
-      select: { id: true, name: true }
-    })
-
-    if (!currentYear) {
-      return NextResponse.json({ error: 'No current academic year found' }, { status: 404 })
-    }
-
-    const whereConditions: any = {
-      academicYearId: currentYear.id
-    }
-
-    if (type) {
-      whereConditions.type = type
-    }
-
-    if (status) {
-      whereConditions.status = status
-    }
-
-    const exams = await db.exam.findMany({
-      where: whereConditions,
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        startDate: true,
-        endDate: true,
-        status: true,
-        papers: {
-          select: {
-            id: true,
-            gradeId: true,
-            totalMarks: true,
-            passingMarks: true,
-            duration: true,
-            examDate: true,
-            startTime: true,
-            endTime: true,
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            _count: {
-              select: {
-                results: true
-              }
-            }
-          },
-          where: gradeId ? { gradeId: gradeId } : undefined
-        }
-      },
-      orderBy: {
-        startDate: 'asc'
+    // Fetch current academic year from backend
+    let currentYearName = '2024-2025' // default
+    try {
+      const yearResponse = await fetchAPI<{ results: any[] }>('/academic-years/')
+      const currentYear = (yearResponse.results || []).find((y: any) => y.is_current)
+      if (currentYear) {
+        currentYearName = currentYear.name
       }
-    })
+    } catch {
+      console.warn('Could not fetch academic year from backend')
+    }
+
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (type) queryParams.type = type
+    if (status) queryParams.status = status
+
+    const response = await fetchAPI<{ results: any[] }>('/exams/', { query: queryParams })
+    const exams = response.results || []
 
     // Transform data to match frontend expectations
-    const transformedExams = exams.map(exam => ({
+    const transformedExams = exams.map((exam: any) => ({
       id: exam.id,
       name: exam.name,
       type: exam.type,
-      startDate: exam.startDate.toISOString().split('T')[0],
-      endDate: exam.endDate.toISOString().split('T')[0],
+      startDate: exam.start_date || exam.startDate,
+      endDate: exam.end_date || exam.endDate,
       status: exam.status,
-      papers: exam.papers?.map(paper => ({
-        id: paper.id,
-        subject: paper.subject.name,
-        subjectCode: paper.subject.code,
-        grade: 'All Grades',
-        gradeId: paper.gradeId,
-        totalMarks: paper.totalMarks,
-        passingMarks: paper.passingMarks,
-        duration: paper.duration,
-        examDate: paper.examDate.toISOString().split('T')[0],
-        startTime: paper.startTime?.toISOString().split('T')[1].substring(0, 5),
-        endTime: paper.endTime?.toISOString().split('T')[1].substring(0, 5),
-        totalStudents: paper._count.results
-      }))
+      academicYear: exam.academic_year_name || exam.academicYearName || currentYearName,
+      papers: exam.papers || exam.exam_papers || []
     }))
 
     return NextResponse.json({
       exams: transformedExams,
-      academicYear: currentYear.name
+      academicYear: currentYearName
     })
 
   } catch (error) {
-    console.error('Error fetching exams:', error)
+    console.error('Error fetching exams from backend API:', error)
     return NextResponse.json(
       { error: 'Failed to fetch exams' },
       { status: 500 }
@@ -116,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || !type || !startDate || !endDate) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Missing required fields',
         details: { name: !!name, type: !!type, startDate: !!startDate, endDate: !!endDate }
       }, { status: 400 })
@@ -125,51 +72,43 @@ export async function POST(request: NextRequest) {
     // Validate date format
     const start = new Date(startDate)
     const end = new Date(endDate)
-    
+
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Invalid date format',
         details: { startDate, endDate, startValid: !isNaN(start.getTime()), endValid: !isNaN(end.getTime()) }
       }, { status: 400 })
     }
 
-    // Get current academic year
-    const currentYear = await db.academicYear.findFirst({
-      where: { isCurrent: true }
-    })
-
-    if (!currentYear) {
-      return NextResponse.json({ error: 'No current academic year found' }, { status: 404 })
-    }
-
-    // Create exam
-    const exam = await db.exam.create({
-      data: {
+    // Create exam via backend API
+    const exam = await fetchAPI('/exams/', {
+      method: 'POST',
+      body: JSON.stringify({
         name,
         type,
-        academicYearId: currentYear.id,
-        startDate: start,
-        endDate: end,
+        start_date: startDate,
+        end_date: endDate,
         status: 'Upcoming'
-      }
+      })
     })
 
     // Create exam papers if provided
     if (papers && papers.length > 0) {
       const examPapers = await Promise.all(
         papers.map((paper: any) =>
-          db.examPaper.create({
-            data: {
-              examId: exam.id,
-              subjectId: paper.subjectId,
-              gradeId: paper.gradeId,
-              totalMarks: paper.totalMarks || 100,
-              passingMarks: paper.passingMarks || 40,
+          fetchAPI('/exams/papers/', {
+            method: 'POST',
+            body: JSON.stringify({
+              exam: exam.id,
+              subject: paper.subjectId,
+              grade: paper.gradeId,
+              total_marks: paper.totalMarks || 100,
+              passing_marks: paper.passingMarks || 40,
               duration: paper.duration || 120,
-              examDate: new Date(paper.examDate),
-              startTime: paper.startTime ? new Date(paper.startTime) : null,
-              endTime: paper.endTime ? new Date(paper.endTime) : null
-            }
+              exam_date: paper.examDate,
+              start_time: paper.startTime,
+              end_time: paper.endTime
+            })
           })
         )
       )
@@ -186,7 +125,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to create exam'
       },
       { status: 500 }

@@ -126,12 +126,8 @@ export function withValidation<T>(
 
     if (options?.audit) {
       try {
-        const session = await (await import("next-auth")).getServerSession(
-          (await import("@/lib/auth/config")).authOptions
-        )
-
         await createAuditLog({
-          userId: session?.user?.id,
+          userId: 'system',
           action: options.audit.action,
           entity: options.audit.entity,
           request: req,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export const revalidate = 60
 
@@ -10,90 +10,80 @@ export async function GET(request: NextRequest) {
     const sectionId = searchParams.get('sectionId')
     const subjectId = searchParams.get('subjectId')
 
-    const whereConditions: any = {}
+    // Fetch exam results from Django backend API
+    const queryParams: Record<string, string> = {}
+    if (gradeId) queryParams.grade = gradeId
+    if (sectionId) queryParams.section = sectionId
+    if (subjectId) queryParams.subject = subjectId
 
-    if (gradeId) {
-      whereConditions.student = {
-        gradeId: gradeId
-      }
-    }
+    const examResultsResponse = await fetchAPI<{ results: any[] }>('/exam-results/', { query: queryParams })
+    const examResults = examResultsResponse.results || []
 
-    if (sectionId) {
-      if (!whereConditions.student) whereConditions.student = {}
-      whereConditions.student.sectionId = sectionId
-    }
+    // Fetch students data to get grade/section details
+    const studentsResponse = await fetchAPI<{ results: any[] }>('/students/')
+    const students = studentsResponse.results || []
 
-    if (subjectId) {
-      whereConditions.examPaper = {
-        subjectId: subjectId
-      }
-    }
+    // Fetch exam papers for subject details
+    const examPapersResponse = await fetchAPI<{ results: any[] }>('/exams/papers/')
+    const examPapers = examPapersResponse.results || []
 
-    const examResults = await db.examResult.findMany({
-      where: whereConditions,
-      select: {
-        id: true,
-        marksObtained: true,
-        percentage: true,
-        rank: true,
-        examPaperId: true,
+    // Fetch subjects for subject details
+    const subjectsResponse = await fetchAPI<{ results: any[] }>('/curriculum/subjects/')
+    const subjects = subjectsResponse.results || []
+
+    // Fetch grades for grade details
+    const gradesResponse = await fetchAPI<{ results: any[] }>('/grades/')
+    const grades = gradesResponse.results || []
+
+    // Fetch sections for section details
+    const sectionsResponse = await fetchAPI<{ results: any[] }>('/sections/')
+    const sections = sectionsResponse.results || []
+
+    // Transform exam results to include nested data
+    const transformedExamResults = examResults.map(result => {
+      const student = students.find(s => s.id === (result.student || result.studentId || result.student_id))
+      const examPaper = examPapers.find(p => p.id === (result.examPaper || result.exam_paper_id || result.examPaperId))
+      const subject = examPaper ? subjects.find(s => s.id === (examPaper.subject || examPaper.subjectId || examPaper.subject_id)) : null
+      const grade = student ? grades.find(g => g.id === (student.grade || student.gradeId || student.grade_id)) : null
+      const section = student ? sections.find(s => s.id === (student.section || student.sectionId || student.section_id)) : null
+
+      return {
+        id: result.id,
+        marksObtained: result.marksObtained || result.marks_obtained || 0,
+        percentage: result.percentage || 0,
+        rank: result.rank,
+        examPaperId: result.examPaper || result.exam_paper_id || result.examPaperId,
         student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            rollNumber: true,
-            grade: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            section: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
+          id: student?.id || result.student || result.studentId || result.student_id || '',
+          firstName: student?.firstName || student?.first_name || 'Unknown',
+          lastName: student?.lastName || student?.last_name || 'Unknown',
+          rollNumber: student?.rollNumber || student?.roll_number || '',
+          grade: grade ? { id: grade.id, name: grade.name } : { id: '', name: 'Unknown' },
+          section: section ? { id: section.id, name: section.name } : { id: '', name: 'Unknown' }
         },
-        examPaper: {
-          select: {
-            id: true,
-            totalMarks: true,
-            passingMarks: true,
-            examDate: true,
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            exam: {
-              select: {
-                id: true,
-                name: true,
-                type: true,
-                status: true,
-                startDate: true
-              }
-            }
-          }
+        examPaper: examPaper ? {
+          id: examPaper.id,
+          totalMarks: examPaper.totalMarks || examPaper.total_marks || 100,
+          passingMarks: examPaper.passingMarks || examPaper.passing_marks || 40,
+          examDate: examPaper.examDate || examPaper.exam_date || new Date().toISOString(),
+          subject: subject ? {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code
+          } : { id: '', name: 'Unknown', code: '' }
+        } : {
+          id: result.examPaper || '',
+          totalMarks: 100,
+          passingMarks: 40,
+          examDate: new Date().toISOString(),
+          subject: { id: '', name: 'Unknown', code: '' }
         }
-      },
-      orderBy: [
-        {
-          examPaper: {
-            examDate: 'desc'
-          }
-        }
-      ]
+      }
     })
 
     const studentPerformance = new Map<string, any[]>()
 
-    examResults.forEach(result => {
+    transformedExamResults.forEach(result => {
       const studentId = result.student.id
       if (!studentPerformance.has(studentId)) {
         studentPerformance.set(studentId, [])
@@ -108,7 +98,7 @@ export async function GET(request: NextRequest) {
       const totalExams = results.length
       const averageScore = results.reduce((sum, r) => sum + r.percentage, 0) / totalExams
 
-      const sortedResults = results.sort((a, b) => 
+      const sortedResults = results.sort((a, b) =>
         new Date(b.examPaper.examDate).getTime() - new Date(a.examPaper.examDate).getTime()
       )
 
@@ -184,7 +174,7 @@ export async function GET(request: NextRequest) {
 
     const subjectPerformance = new Map<string, any[]>()
 
-    examResults.forEach(result => {
+    transformedExamResults.forEach(result => {
       const subjectName = result.examPaper.subject.name
       if (!subjectPerformance.has(subjectName)) {
         subjectPerformance.set(subjectName, [])
@@ -244,11 +234,11 @@ export async function GET(request: NextRequest) {
 
     const gradePerformance = new Map<string, any[]>()
 
-    examResults.forEach(result => {
+    transformedExamResults.forEach(result => {
       const gradeName = result.student.grade.name
       const sectionName = result.student.section.name
       const key = `${gradeName}-${sectionName}`
-      
+
       if (!gradePerformance.has(key)) {
         gradePerformance.set(key, [])
       }
@@ -328,8 +318,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const overallAverage = examResults.length > 0 
-      ? examResults.reduce((sum, r) => sum + r.percentage, 0) / examResults.length 
+    const overallAverage = transformedExamResults.length > 0
+      ? transformedExamResults.reduce((sum, r) => sum + r.percentage, 0) / transformedExamResults.length
       : 0
 
     if (overallAverage >= 70) {
@@ -357,7 +347,7 @@ export async function GET(request: NextRequest) {
       gradeComparison: gradeComparison.slice(0, 10),
       overallStats: {
         totalStudents: studentPerformance.size,
-        totalExamResults: examResults.length,
+        totalExamResults: transformedExamResults.length,
         overallAverage: Math.round(overallAverage * 100) / 100,
         highRiskStudents: highRiskCount,
         mediumRiskStudents: studentRiskFactors.filter(s => s.riskLevel === 'medium').length,

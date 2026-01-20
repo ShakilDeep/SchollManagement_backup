@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET() {
   try {
-    const books = await db.book.findMany({
-      orderBy: {
-        title: 'asc',
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/library/books/')
+    const books = (response.results || []).map((b: any) => ({
+      id: b.id,
+      isbn: b.isbn,
+      title: b.title || 'Unknown',
+      author: b.author || 'Unknown',
+      publisher: b.publisher,
+      publicationYear: b.publication_year || b.publicationYear,
+      category: b.category,
+      language: b.language,
+      pageCount: b.page_count || b.pageCount,
+      totalCopies: b.total_copies || b.totalCopies || 0,
+      availableCopies: b.available_copies || b.availableCopies || 0,
+      location: b.location,
+      description: b.description,
+      createdAt: b.created_at || b.createdAt
+    }))
 
     return NextResponse.json(books)
   } catch (error) {
@@ -37,21 +49,22 @@ export async function POST(req: Request) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    const book = await db.book.create({
-      data: {
+    const book = await fetchAPI('/library/books/', {
+      method: 'POST',
+      body: JSON.stringify({
         isbn,
         title,
         author,
         publisher,
-        publicationYear: publicationYear ? parseInt(publicationYear) : null,
+        publication_year: publicationYear ? parseInt(publicationYear) : null,
         category,
         language,
-        pageCount: pageCount ? parseInt(pageCount) : null,
-        totalCopies: parseInt(totalCopies),
-        availableCopies: parseInt(totalCopies),
+        page_count: pageCount ? parseInt(pageCount) : null,
+        total_copies: parseInt(totalCopies),
+        available_copies: parseInt(totalCopies),
         location,
         description,
-      },
+      })
     })
 
     return NextResponse.json(book)

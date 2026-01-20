@@ -1,5 +1,10 @@
 from rest_framework import permissions
 
+class IsAuthenticatedAndActive(permissions.IsAuthenticated):
+    def has_permission(self, request, view):
+        is_authenticated = super().has_permission(request, view)
+        return is_authenticated and request.user.is_active
+
 class IsAdminOrSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.role in ['ADMIN', 'SUPER_ADMIN']

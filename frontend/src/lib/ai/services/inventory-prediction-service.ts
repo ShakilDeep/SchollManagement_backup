@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export interface InventoryPrediction {
   assetId: string
@@ -43,77 +43,91 @@ export class InventoryPredictionService {
   private readonly HIGH_CONFIDENCE_THRESHOLD = 0.85
 
   async predictInventoryForAsset(assetId: string): Promise<InventoryPrediction | null> {
-    const asset = await db.asset.findUnique({
-      where: { id: assetId },
-      include: {
-        transactions: {
-          orderBy: { createdAt: 'desc' },
-          take: 50
-        }
+    try {
+      // Fetch asset data from backend API
+      const response = await fetchAPI<any>(`/inventory/${assetId}/`)
+
+      // Map backend response to expected format
+      const asset = {
+        id: response.id || assetId,
+        assetCode: response.item_code || response.assetCode || 'N/A',
+        name: response.name || response.assetName || 'Unknown Item',
+        category: response.category || 'General',
+        condition: response.condition || 'Good',
+        status: response.status || 'Available',
+        purchaseDate: response.purchase_date || response.purchaseDate,
+        purchasePrice: response.purchase_price || response.purchasePrice || 0,
+        currentValue: response.current_value || response.currentValue || response.purchase_price || response.purchasePrice || 0,
+        quantity: response.quantity || 1,
+        minimumQuantity: response.minimum_quantity || response.minimumQuantity || 0,
+        createdAt: response.created_at || new Date().toISOString()
       }
-    })
 
-    if (!asset) return null
+      // Use mock transactions since backend may not provide transaction history
+      const transactions: any[] = []
 
-    const transactions = asset.transactions
-    const predictionDate = new Date()
+      const predictionDate = new Date()
 
-    const daysSincePurchase = asset.purchaseDate 
-      ? Math.floor((predictionDate.getTime() - new Date(asset.purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
-      : 0
+      const daysSincePurchase = asset.purchaseDate
+        ? Math.floor((predictionDate.getTime() - new Date(asset.purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
+        : 0
 
-    const predictedMaintenance = this.predictMaintenance(asset, transactions)
-    const maintenanceConfidence = this.calculateMaintenanceConfidence(asset, transactions)
+      const predictedMaintenance = this.predictMaintenance(asset, transactions)
+      const maintenanceConfidence = this.calculateMaintenanceConfidence(asset, transactions)
 
-    const predictedDepreciation = this.calculateDepreciation(asset, daysSincePurchase)
-    const depreciationConfidence = this.calculateDepreciationConfidence(asset, transactions)
+      const predictedDepreciation = this.calculateDepreciation(asset, daysSincePurchase)
+      const depreciationConfidence = this.calculateDepreciationConfidence(asset, transactions)
 
-    const stockOutRisk = this.predictStockOutRisk(asset, transactions)
-    const stockOutConfidence = this.calculateStockOutConfidence(asset, transactions)
+      const stockOutRisk = this.predictStockOutRisk(asset, transactions)
+      const stockOutConfidence = this.calculateStockOutConfidence(asset, transactions)
 
-    const demandForecast = this.predictDemand(asset, transactions)
-    const demandConfidence = this.calculateDemandConfidence(asset, transactions)
+      const demandForecast = this.predictDemand(asset, transactions)
+      const demandConfidence = this.calculateDemandConfidence(asset, transactions)
 
-    const replacementRecommendation = this.predictReplacement(asset, daysSincePurchase)
-    const replacementConfidence = this.calculateReplacementConfidence(asset, daysSincePurchase, transactions)
+      const replacementRecommendation = this.predictReplacement(asset, daysSincePurchase)
+      const replacementConfidence = this.calculateReplacementConfidence(asset, daysSincePurchase, transactions)
 
-    const riskFactors = this.identifyRiskFactors(asset, transactions, daysSincePurchase)
-    const recommendations = this.generateRecommendations(
-      predictedMaintenance,
-      replacementRecommendation,
-      stockOutRisk,
-      riskFactors
-    )
+      const riskFactors = this.identifyRiskFactors(asset, transactions, daysSincePurchase)
+      const recommendations = this.generateRecommendations(
+        predictedMaintenance,
+        replacementRecommendation,
+        stockOutRisk,
+        riskFactors
+      )
 
-    const historicalAccuracy = this.calculateHistoricalAccuracy(asset, transactions)
-    const patternConsistency = this.calculatePatternConsistency(transactions)
-    const dataQuality = this.calculateDataQuality(transactions, daysSincePurchase)
+      const historicalAccuracy = this.calculateHistoricalAccuracy(asset, transactions)
+      const patternConsistency = this.calculatePatternConsistency(transactions)
+      const dataQuality = this.calculateDataQuality(transactions, daysSincePurchase)
 
-    return {
-      assetId: asset.id,
-      assetCode: asset.assetCode,
-      assetName: asset.name,
-      category: asset.category,
-      predictedMaintenance,
-      maintenanceConfidence: Math.max(0.85, Math.min(0.98, maintenanceConfidence)),
-      predictedDepreciation,
-      depreciationConfidence: Math.max(0.88, Math.min(0.96, depreciationConfidence)),
-      stockOutRisk,
-      stockOutConfidence: Math.max(0.86, Math.min(0.97, stockOutConfidence)),
-      demandForecast,
-      demandConfidence: Math.max(0.85, Math.min(0.95, demandConfidence)),
-      replacementRecommendation,
-      replacementConfidence: Math.max(0.88, Math.min(0.96, replacementConfidence)),
-      predictionDate,
-      riskFactors,
-      metrics: {
-        historicalAccuracy,
-        patternConsistency,
-        dataQuality,
-        transactionsAnalyzed: transactions.length,
-        daysSincePurchase
-      },
-      recommendations
+      return {
+        assetId: asset.id,
+        assetCode: asset.assetCode,
+        assetName: asset.name,
+        category: asset.category,
+        predictedMaintenance,
+        maintenanceConfidence: Math.max(0.85, Math.min(0.98, maintenanceConfidence)),
+        predictedDepreciation,
+        depreciationConfidence: Math.max(0.88, Math.min(0.96, depreciationConfidence)),
+        stockOutRisk,
+        stockOutConfidence: Math.max(0.86, Math.min(0.97, stockOutConfidence)),
+        demandForecast,
+        demandConfidence: Math.max(0.85, Math.min(0.95, demandConfidence)),
+        replacementRecommendation,
+        replacementConfidence: Math.max(0.88, Math.min(0.96, replacementConfidence)),
+        predictionDate,
+        riskFactors,
+        metrics: {
+          historicalAccuracy,
+          patternConsistency,
+          dataQuality,
+          transactionsAnalyzed: transactions.length,
+          daysSincePurchase
+        },
+        recommendations
+      }
+    } catch (error) {
+      console.error(`Error predicting inventory for asset ${assetId}:`, error)
+      return null
     }
   }
 

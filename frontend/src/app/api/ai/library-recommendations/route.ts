@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { libraryRecommendationService } from '@/lib/ai/services/library-recommendations'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,23 +17,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      include: {
-        grade: true,
-        section: true,
-        bookIssues: {
-          include: {
-            book: {
-              include: {
-                category: true
-              }
-            }
-          },
-          orderBy: { issueDate: 'desc' }
-        }
-      }
-    })
+    // Fetch student data from Django backend API
+    const studentResponse = await fetchAPI<any>(`/students/${studentId}/`)
+    const student = studentResponse
 
     if (!student) {
       return NextResponse.json(
@@ -45,58 +31,80 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const recentBooksRead = student.bookIssues
-      .filter(issue => issue.returnDate)
-      .map(issue => ({
-        title: issue.book.title,
-        author: issue.book.author,
-        genre: issue.book.category?.name || 'General',
+    // Fetch grades for grade name
+    const gradesResponse = await fetchAPI<{ results: any[] }>('/grades/')
+    const grades = gradesResponse.results || []
+    const grade = grades.find(g => g.id === (student.grade || student.gradeId || student.grade_id))
+
+    // Fetch borrowals to get book history
+    const borrowalsResponse = await fetchAPI<{ results: any[] }>(`/library/borrowals/?student=${studentId}`)
+    const borrowals = borrowalsResponse.results || []
+
+    // Get recently returned books (with return dates)
+    const returnedBorrowals = borrowals.filter(b => b.returnDate || b.return_date)
+
+    // Fetch all books for library inventory
+    const booksResponse = await fetchAPI<{ results: any[] }>('/library/books/')
+    const allBooks = booksResponse.results || []
+
+    const recentBooksRead = returnedBorrowals.map(issue => {
+      const book = allBooks.find(b => b.id === (issue.book || issue.bookId || issue.book_id))
+      return {
+        title: book?.title || 'Unknown',
+        author: book?.author || 'Unknown',
+        genre: book?.category || book?.category_name || 'General',
         rating: 4,
-        dateRead: issue.returnDate.toISOString().split('T')[0]
-      }))
+        dateRead: (issue.returnDate || issue.return_date || issue.created_at || '').toString().split('T')[0]
+      }
+    })
 
     const interests = recentBooksRead
       .map(book => book.genre)
       .filter((genre, index, self) => self.indexOf(genre) === index)
 
-    const examResults = await db.examResult.findMany({
-      where: {
-        studentId: studentId
-      },
-      include: {
-        examPaper: {
-          include: {
-            subject: true
-          }
-        }
-      },
-      take: 10
-    })
+    // Fetch exam results for subject performance
+    const examResultsResponse = await fetchAPI<{ results: any[] }>(`/exam-results/?student=${studentId}`)
+    const examResults = examResultsResponse.results || []
+
+    // Fetch subjects for subject names
+    const subjectsResponse = await fetchAPI<{ results: any[] }>('/curriculum/subjects/')
+    const subjects = subjectsResponse.results || []
 
     const subjectPerformance = examResults.reduce((acc, result) => {
-      const subject = result.examPaper.subject.name
-      if (!acc[subject]) {
-        acc[subject] = []
+      // Find the subject from exam paper
+      const examPaperId = result.examPaper || result.exam_paper_id || result.examPaperId
+      let subjectName = 'Unknown'
+
+      // Try to find subject from exam paper (if we had exam papers endpoint)
+      // For now, use a default approach
+      if (result.subjectName || result.subject_name) {
+        subjectName = result.subjectName || result.subject_name
       }
-      acc[subject].push(result.percentage)
+
+      if (!acc[subjectName]) {
+        acc[subjectName] = []
+      }
+      acc[subjectName].push(result.percentage || 0)
       return acc
     }, {} as Record<string, number[]>)
 
     const subjectsAverage: Record<string, number> = {}
-    Object.entries(subjectPerformance).forEach(([subject, scores]) => {
-      subjectsAverage[subject] = scores.reduce((a, b) => a + b, 0) / scores.length
+    Object.entries(subjectPerformance).forEach(([subj, scores]) => {
+      subjectsAverage[subj] = scores.reduce((a, b) => a + b, 0) / scores.length
     })
 
     const averagePerformance = Object.values(subjectsAverage).length > 0
       ? Object.values(subjectsAverage).reduce((a, b) => a + b, 0) / Object.values(subjectsAverage).length
       : 0
 
+    const gradeName = grade?.name || student.grade_name || 'Unknown'
+
     const studentProfile = {
       id: student.id,
-      name: `${student.firstName} ${student.lastName}`,
-      grade: student.grade.name,
+      name: `${student.firstName || student.first_name || ''} ${student.lastName || student.last_name || ''}`.trim(),
+      grade: gradeName,
       interests: interests.length > 0 ? interests : ['General', 'Science', 'Mathematics', 'Literature'],
-      readingLevel: student.grade.name === 'Grade 10' || student.grade.name === 'Grade 11' || student.grade.name === 'Grade 12' ? 'advanced' as const : 'intermediate' as const,
+      readingLevel: gradeName === 'Grade 10' || gradeName === 'Grade 11' || gradeName === 'Grade 12' ? 'advanced' as const : 'intermediate' as const,
       recentBooksRead,
       academicPerformance: {
         subjects: subjectsAverage,
@@ -104,26 +112,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const allBooks = await db.book.findMany({
-      include: {
-        category: true
-      }
-    })
-
     const libraryInventory = {
       books: allBooks.map(book => {
-        const availableCopies = book.totalCopies - (book.issuedCopies || 0)
+        const issuedCopies = book.issuedCopies || book.issued_copies || 0
+        const availableCopies = (book.totalCopies || book.total_copies || 1) - issuedCopies
         return {
           id: book.id,
           title: book.title,
           author: book.author,
-          genre: book.category?.name || 'General',
-          subgenres: [book.category?.name || 'General'],
-          difficulty: book.category?.name?.includes('Advanced') ? 'hard' as const : 'medium' as const,
-          pageCount: book.pages || 200,
+          genre: book.category || book.category_name || 'General',
+          subgenres: [book.category || book.category_name || 'General'],
+          difficulty: (book.category || book.category_name || '').includes('Advanced') ? 'hard' as const : 'medium' as const,
+          pageCount: book.pages || book.page_count || 200,
           availability: availableCopies > 0 ? 'available' as const : 'borrowed' as const,
-          ageGroup: [student.grade.name],
-          topics: [book.category?.name || 'General'],
+          ageGroup: [gradeName],
+          topics: [book.category || book.category_name || 'General'],
           awards: []
         }
       })
@@ -179,23 +182,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      include: {
-        grade: true,
-        section: true,
-        bookIssues: {
-          include: {
-            book: {
-              include: {
-                category: true
-              }
-            }
-          },
-          orderBy: { issueDate: 'desc' }
-        }
-      }
-    })
+    // Fetch student data from Django backend API
+    const studentResponse = await fetchAPI<any>(`/students/${studentId}/`)
+    const student = studentResponse
 
     if (!student) {
       return NextResponse.json(
@@ -207,49 +196,63 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const recentBooksRead = student.bookIssues
-      .filter(issue => issue.returnDate)
-      .map(issue => ({
-        title: issue.book.title,
-        author: issue.book.author,
-        genre: issue.book.category?.name || 'General',
+    // Fetch grades for grade name
+    const gradesResponse = await fetchAPI<{ results: any[] }>('/grades/')
+    const grades = gradesResponse.results || []
+    const grade = grades.find(g => g.id === (student.grade || student.gradeId || student.grade_id))
+
+    // Fetch borrowals to get book history
+    const borrowalsResponse = await fetchAPI<{ results: any[] }>(`/library/borrowals/?student=${studentId}`)
+    const borrowals = borrowalsResponse.results || []
+
+    // Get recently returned books (with return dates)
+    const returnedBorrowals = borrowals.filter(b => b.returnDate || b.return_date)
+
+    // Fetch all books for library inventory
+    const booksResponse = await fetchAPI<{ results: any[] }>('/library/books/')
+    const allBooks = booksResponse.results || []
+
+    const recentBooksRead = returnedBorrowals.map(issue => {
+      const book = allBooks.find(b => b.id === (issue.book || issue.bookId || issue.book_id))
+      return {
+        title: book?.title || 'Unknown',
+        author: book?.author || 'Unknown',
+        genre: book?.category || book?.category_name || 'General',
         rating: 4,
-        dateRead: issue.returnDate.toISOString().split('T')[0]
-      }))
+        dateRead: (issue.returnDate || issue.return_date || issue.created_at || '').toString().split('T')[0]
+      }
+    })
 
     const interests = recentBooksRead
       .map(book => book.genre)
       .filter((genre, index, self) => self.indexOf(genre) === index)
 
+    const gradeName = grade?.name || student.grade_name || 'Unknown'
+
     const studentProfile = {
       id: student.id,
-      name: `${student.firstName} ${student.lastName}`,
-      grade: student.grade.name,
+      name: `${student.firstName || student.first_name || ''} ${student.lastName || student.last_name || ''}`.trim(),
+      grade: gradeName,
       interests: interests.length > 0 ? interests : ['General', 'Science', 'Mathematics', 'Literature'],
-      readingLevel: student.grade.name === 'Grade 10' || student.grade.name === 'Grade 11' || student.grade.name === 'Grade 12' ? 'advanced' : 'intermediate',
+      readingLevel: gradeName === 'Grade 10' || gradeName === 'Grade 11' || gradeName === 'Grade 12' ? 'advanced' : 'intermediate',
       recentBooksRead
     }
 
-    const allBooks = await db.book.findMany({
-      include: {
-        category: true
-      }
-    })
-
     const libraryInventory = {
       books: allBooks.map(book => {
-        const availableCopies = book.totalCopies - (book.issuedCopies || 0)
+        const issuedCopies = book.issuedCopies || book.issued_copies || 0
+        const availableCopies = (book.totalCopies || book.total_copies || 1) - issuedCopies
         return {
           id: book.id,
           title: book.title,
           author: book.author,
-          genre: book.category?.name || 'General',
-          subgenres: [book.category?.name || 'General'],
-          difficulty: book.category?.name?.includes('Advanced') ? 'hard' : 'medium',
-          pageCount: book.pages || 200,
+          genre: book.category || book.category_name || 'General',
+          subgenres: [book.category || book.category_name || 'General'],
+          difficulty: (book.category || book.category_name || '').includes('Advanced') ? 'hard' : 'medium',
+          pageCount: book.pages || book.page_count || 200,
           availability: availableCopies > 0 ? 'available' : 'borrowed',
-          ageGroup: [student.grade.name],
-          topics: [book.category?.name || 'General'],
+          ageGroup: [gradeName],
+          topics: [book.category || book.category_name || 'General'],
           awards: []
         }
       })

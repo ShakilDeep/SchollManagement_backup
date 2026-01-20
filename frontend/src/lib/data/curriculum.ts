@@ -1,203 +1,84 @@
 import { cache } from 'react'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export const getCurriculums = cache(async (filters?: {
   subjectId?: string
   gradeId?: string
   academicYearId?: string
 }) => {
-  const where: any = {}
-  if (filters?.subjectId) where.subjectId = filters.subjectId
-  if (filters?.gradeId) where.gradeId = filters.gradeId
-  if (filters?.academicYearId) where.academicYearId = filters.academicYearId
+  // Build query parameters for backend API
+  const queryParams: Record<string, string> = {}
+  if (filters?.subjectId) queryParams.subject = filters.subjectId
+  if (filters?.gradeId) queryParams.grade = filters.gradeId
+  if (filters?.academicYearId) queryParams.academic_year = filters.academicYearId
 
-  const curriculums = await db.curriculum.findMany({
-    where,
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      objectives: true,
-      topics: true,
-      createdAt: true,
-      updatedAt: true,
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          color: true
-        }
-      },
-      grade: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      academicYear: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      lessons: {
-        select: {
-          id: true,
-          title: true,
-          content: true,
-          date: true,
-          duration: true,
-          status: true,
-          teacher: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              user: {
-                select: {
-                  name: true,
-                  email: true
-                }
-              }
-            }
-          },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              color: true
-            }
-          }
-        },
-        orderBy: {
-          date: 'asc'
-        }
-      }
-    },
-    orderBy: {
-      name: 'asc'
-    }
-  })
+  const response = await fetchAPI<{ results: any[] }>('/curriculum/', { query: queryParams })
+  const curriculums = response.results || []
 
-  return curriculums
+  return curriculums.map((c: any) => ({
+    id: c.id,
+    name: c.name || 'Unknown',
+    description: c.description,
+    objectives: c.objectives || [],
+    topics: c.topics || [],
+    createdAt: c.created_at || c.createdAt,
+    updatedAt: c.updated_at || c.updatedAt,
+    subject: c.subject_details || c.subject,
+    grade: c.grade_details || c.grade,
+    academicYear: c.academic_year_details || c.academicYear,
+    lessons: c.lessons || [],
+  }))
 })
 
 export const getCurriculumById = cache(async (id: string) => {
-  const curriculum = await db.curriculum.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      objectives: true,
-      topics: true,
-      createdAt: true,
-      updatedAt: true,
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          color: true
-        }
-      },
-      grade: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      academicYear: {
-        select: {
-          id: true,
-          name: true
-        }
-      },
-      lessons: {
-        select: {
-          id: true,
-          title: true,
-          content: true,
-          date: true,
-          duration: true,
-          status: true,
-          teacher: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              user: {
-                select: {
-                  name: true,
-                  email: true
-                }
-              }
-            }
-          },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              color: true
-            }
-          }
-        },
-        orderBy: {
-          date: 'asc'
-        }
-      }
-    }
-  })
+  const curriculum = await fetchAPI<any>(`/curriculum/${id}/`)
 
-  return curriculum
+  return {
+    id: curriculum.id,
+    name: curriculum.name || 'Unknown',
+    description: curriculum.description,
+    objectives: curriculum.objectives || [],
+    topics: curriculum.topics || [],
+    createdAt: curriculum.created_at || curriculum.createdAt,
+    updatedAt: curriculum.updated_at || curriculum.updatedAt,
+    subject: curriculum.subject_details || curriculum.subject,
+    grade: curriculum.grade_details || curriculum.grade,
+    academicYear: curriculum.academic_year_details || curriculum.academicYear,
+    lessons: curriculum.lessons || [],
+  }
 })
 
 export const getSubjects = cache(async () => {
-  const subjects = await db.subject.findMany({
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      color: true
-    },
-    orderBy: {
-      name: 'asc'
-    }
-  })
+  const response = await fetchAPI<{ results: any[] }>('/curriculum/subjects/')
+  const subjects = response.results || []
 
-  return subjects
+  return subjects.map((s: any) => ({
+    id: s.id,
+    name: s.name || 'Unknown',
+    code: s.code,
+    color: s.color,
+  }))
 })
 
 export const getGrades = cache(async () => {
-  const grades = await db.grade.findMany({
-    select: {
-      id: true,
-      name: true
-    },
-    orderBy: {
-      name: 'asc'
-    }
-  })
+  const response = await fetchAPI<{ results: any[] }>('/grades/')
+  const grades = response.results || []
 
-  return grades
+  return grades.map((g: any) => ({
+    id: g.id,
+    name: g.name || 'Unknown',
+  }))
 })
 
 export const getAcademicYears = cache(async () => {
-  const academicYears = await db.academicYear.findMany({
-    select: {
-      id: true,
-      name: true,
-      startDate: true,
-      endDate: true,
-      isCurrent: true
-    },
-    orderBy: {
-      startDate: 'desc'
-    }
-  })
+  const response = await fetchAPI<{ results: any[] }>('/academic-years/')
+  const academicYears = response.results || []
 
-  return academicYears
+  return academicYears.map((y: any) => ({
+    id: y.id,
+    name: y.name,
+    startDate: y.start_date || y.startDate,
+    endDate: y.end_date || y.endDate,
+    isCurrent: y.is_current || y.isCurrent || false,
+  }))
 })

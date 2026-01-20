@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { HostelPredictionService } from '@/lib/ai/services/hostel-predictions'
 import { HostelPrediction } from '@/lib/ai/types'
+import { fetchAPI } from '@/lib/api/client'
 
 function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: any[]): HostelPrediction {
   const totalHostels = hostels.length
-  const totalCapacity = hostels.reduce((sum, h) => sum + h.capacity, 0)
-  const currentOccupancy = hostels.reduce((sum, h) => sum + h.currentOccupancy, 0)
+  const totalCapacity = hostels.reduce((sum, h) => sum + (h.capacity || 0), 0)
+  const currentOccupancy = hostels.reduce((sum, h) => sum + (h.currentOccupancy || h.current_occupancy || 0), 0)
   const occupancyRate = totalCapacity > 0 ? currentOccupancy / totalCapacity : 0
   const monthlyRevenue = allocations.reduce((sum, a) => sum + (a.fees || 0), 0)
 
@@ -16,11 +16,11 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
   else if (occupancyRate > 0.9) healthScore += 0.2
   else healthScore += 0.1
 
-  const activeAllocations = allocations.filter(a => a.status === 'Active').length
+  const activeAllocations = allocations.filter(a => a.status === 'Active' || a.status === 'active').length
   const collectionRate = activeAllocations > 0 ? allocations.filter(a => a.fees && a.fees > 0).length / activeAllocations : 0
   healthScore += collectionRate * 0.3
 
-  const avgOccupancy = totalHostels > 0 ? hostels.reduce((sum, h) => sum + (h.capacity > 0 ? h.currentOccupancy / h.capacity : 0), 0) / totalHostels : 0
+  const avgOccupancy = totalHostels > 0 ? hostels.reduce((sum, h) => sum + ((h.capacity || 0) > 0 ? (h.currentOccupancy || h.current_occupancy || 0) / (h.capacity || 1) : 0), 0) / totalHostels : 0
   healthScore += avgOccupancy * 0.3
 
   let healthStatus: 'excellent' | 'good' | 'fair' | 'poor' = 'good'
@@ -34,7 +34,7 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
       id: h.id,
       name: h.name,
       type: h.type,
-      occupancyRate: h.capacity > 0 ? h.currentOccupancy / h.capacity : 0
+      occupancyRate: (h.capacity || 1) > 0 ? (h.currentOccupancy || h.current_occupancy || 0) / (h.capacity || 1) : 0
     }))
     .sort((a, b) => b.occupancyRate - a.occupancyRate)
 
@@ -58,12 +58,12 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
     }
   })
 
-  const current = allocations.filter(a => a.status === 'Active').length
+  const current = allocations.filter(a => a.status === 'Active' || a.status === 'active').length
   const recentAllocations = allocations.filter(a => {
-    const allocationDate = new Date(a.allocationDate)
+    const allocationDate = new Date(a.allocationDate || a.allocation_date || a.created_at || a.createdAt)
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    return allocationDate >= thirtyDaysAgo && a.status === 'Active'
+    return allocationDate >= thirtyDaysAgo && (a.status === 'Active' || a.status === 'active')
   }).length
 
   const projected = current + Math.round(recentAllocations * 0.8)
@@ -73,7 +73,7 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
   else if (recentAllocations < -current * 0.1) trend = 'decreasing'
   else trend = 'stable'
 
-  const activeAllocationsList = allocations.filter(a => a.status === 'Active')
+  const activeAllocationsList = allocations.filter(a => a.status === 'Active' || a.status === 'active')
   const totalRevenue = activeAllocationsList.reduce((sum, a) => sum + (a.fees || 0), 0)
   const collectedAmount = activeAllocationsList.filter(a => a.fees && a.fees > 0).reduce((sum, a) => sum + a.fees, 0)
   const pendingAmount = totalRevenue - collectedAmount
@@ -84,12 +84,15 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
   else if (feeCollectionRate >= 0.7) defaultRisk = 'medium'
   else defaultRisk = 'high'
 
-  const roomOccupancy = rooms.map(r => ({
-    roomNumber: r.roomNumber,
-    occupancyRate: r.capacity > 0 ? r.currentOccupancy / r.capacity : 0,
-    hostel: hostels.find(h => h.id === r.hostelId)?.name || '',
-    floor: r.floor
-  }))
+  const roomOccupancy = rooms.map(r => {
+    const hostel = hostels.find(h => h.id === (r.hostelId || r.hostel || r.hostel_id))
+    return {
+      roomNumber: r.roomNumber || r.room_number,
+      occupancyRate: (r.capacity || 1) > 0 ? (r.currentOccupancy || r.current_occupancy || 0) / (r.capacity || 1) : 0,
+      hostel: hostel?.name || '',
+      floor: r.floor
+    }
+  })
 
   const sortedByOccupancy = [...roomOccupancy].sort((a, b) => b.occupancyRate - a.occupancyRate)
   const mostUtilized = sortedByOccupancy.slice(0, 5).map(r => ({
@@ -105,8 +108,8 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
 
   const floorPreferences: Record<number, number> = {}
   rooms.forEach(r => {
-    if (r.capacity > 0) {
-      const floorOccupancy = r.currentOccupancy / r.capacity
+    if ((r.capacity || 0) > 0) {
+      const floorOccupancy = (r.currentOccupancy || r.current_occupancy || 0) / (r.capacity || 1)
       floorPreferences[r.floor] = (floorPreferences[r.floor] || 0) + floorOccupancy
     }
   })
@@ -119,7 +122,7 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
 
   const capacityAlerts: HostelPrediction['capacityAlerts'] = []
   hostels.forEach(h => {
-    const occRate = h.capacity > 0 ? h.currentOccupancy / h.capacity : 0
+    const occRate = (h.capacity || 1) > 0 ? (h.currentOccupancy || h.current_occupancy || 0) / (h.capacity || 1) : 0
 
     if (occRate >= 0.95) {
       capacityAlerts.push({
@@ -139,7 +142,7 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
         action: 'Plan for additional rooms or hostel',
         priority: 'medium'
       })
-    } else if (occRate <= 0.3 && h.capacity > 10) {
+    } else if (occRate <= 0.3 && (h.capacity || 0) > 10) {
       capacityAlerts.push({
         type: 'info',
         hostelId: h.id,
@@ -154,8 +157,8 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
   const maleHostelIds = hostels.filter(h => h.type === 'Boys').map(h => h.id)
   const femaleHostelIds = hostels.filter(h => h.type === 'Girls').map(h => h.id)
 
-  const maleCount = allocations.filter(a => maleHostelIds.includes(a.hostelId) && a.status === 'Active').length
-  const femaleCount = allocations.filter(a => femaleHostelIds.includes(a.hostelId) && a.status === 'Active').length
+  const maleCount = allocations.filter(a => maleHostelIds.includes((a.hostelId || a.hostel || a.hostel_id)) && (a.status === 'Active' || a.status === 'active')).length
+  const femaleCount = allocations.filter(a => femaleHostelIds.includes((a.hostelId || a.hostel || a.hostel_id)) && (a.status === 'Active' || a.status === 'active')).length
 
   const totalStudents = maleCount + femaleCount
   const balance: 'balanced' | 'imbalanced' = totalStudents === 0 ? 'balanced' : Math.abs(maleCount - femaleCount) / totalStudents <= 0.1 ? 'balanced' : 'imbalanced'
@@ -350,61 +353,57 @@ function generateFallbackPredictions(hostels: any[], rooms: any[], allocations: 
 
 export async function GET() {
   try {
-    const [hostels, rooms, allocations] = await Promise.all([
-      db.hostel.findMany({
-        orderBy: {
-          name: 'asc'
-        }
-      }),
-      db.room.findMany({
-        orderBy: {
-          roomNumber: 'asc'
-        }
-      }),
-      db.hostelAllocation.findMany({
-        where: {
-          allocationDate: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          }
-        },
-        orderBy: {
-          allocationDate: 'desc'
-        },
-        take: 100
-      })
+    // Fetch data from Django backend API
+    const [hostelsResponse, roomsResponse, allocationsResponse] = await Promise.all([
+      fetchAPI<{ results: any[] }>('/hostels/'),
+      fetchAPI<{ results: any[] }>('/hostels/rooms/'),
+      fetchAPI<{ results: any[] }>('/hostels/allocations/')
     ])
+
+    const hostels = hostelsResponse.results || []
+    const rooms = roomsResponse.results || []
+    const allocations = allocationsResponse.results || []
+
+    // Filter recent allocations (last 30 days)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    const recentAllocations = allocations.filter(a => {
+      const allocationDate = new Date(a.allocationDate || a.allocation_date || a.created_at || a.createdAt)
+      return allocationDate >= thirtyDaysAgo
+    })
 
     const hostelData = {
       hostels: hostels.map(hostel => ({
         id: hostel.id,
         name: hostel.name,
         type: hostel.type,
-        capacity: hostel.capacity,
-        currentOccupancy: hostel.currentOccupancy,
-        wardenName: hostel.wardenName,
-        wardenPhone: hostel.wardenPhone,
+        capacity: hostel.capacity || 0,
+        currentOccupancy: hostel.currentOccupancy || hostel.current_occupancy || 0,
+        wardenName: hostel.wardenName || hostel.warden_name,
+        wardenPhone: hostel.wardenPhone || hostel.warden_phone,
         address: hostel.address
       })),
       rooms: rooms.map(room => ({
         id: room.id,
-        hostelId: room.hostelId,
-        roomNumber: room.roomNumber,
+        hostelId: room.hostel || room.hostelId || room.hostel_id,
+        roomNumber: room.roomNumber || room.room_number,
         floor: room.floor,
-        capacity: room.capacity,
-        currentOccupancy: room.currentOccupancy,
+        capacity: room.capacity || 0,
+        currentOccupancy: room.currentOccupancy || room.current_occupancy || 0,
         type: room.type,
         facilities: room.facilities
       })),
-      allocations: allocations.map(allocation => ({
+      allocations: recentAllocations.map(allocation => ({
         id: allocation.id,
-        hostelId: allocation.hostelId,
-        roomId: allocation.roomId,
-        studentId: allocation.studentId,
-        academicYearId: allocation.academicYearId,
-        allocationDate: allocation.allocationDate.toISOString(),
-        checkoutDate: allocation.checkoutDate?.toISOString(),
-        fees: allocation.fees,
-        status: allocation.status
+        hostelId: allocation.hostel || allocation.hostelId || allocation.hostel_id,
+        roomId: allocation.room || allocation.roomId || allocation.room_id,
+        studentId: allocation.student || allocation.studentId || allocation.student_id,
+        academicYearId: allocation.academicYear || allocation.academicYearId || allocation.academic_year_id,
+        allocationDate: allocation.allocationDate || allocation.allocation_date || allocation.created_at,
+        checkoutDate: allocation.checkoutDate || allocation.checkout_date,
+        fees: allocation.fees || 0,
+        status: allocation.status || 'Active'
       }))
     }
 
@@ -420,33 +419,50 @@ export async function GET() {
     if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
       console.log('[HOSTEL_PREDICTIONS_GET] Using fallback predictions due to API quota limit')
 
-      const [hostels, rooms, allocations] = await Promise.all([
-        db.hostel.findMany({
-          orderBy: {
-            name: 'asc'
-          }
-        }),
-        db.room.findMany({
-          orderBy: {
-            roomNumber: 'asc'
-          }
-        }),
-        db.hostelAllocation.findMany({
-          where: {
-            allocationDate: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-            }
-          },
-          orderBy: {
-            allocationDate: 'desc'
-          },
-          take: 100
-        })
-      ])
+      // Try to fetch basic data from backend for fallback
+      try {
+        const [hostelsResponse, roomsResponse, allocationsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/hostels/'),
+          fetchAPI<{ results: any[] }>('/hostels/rooms/'),
+          fetchAPI<{ results: any[] }>('/hostels/allocations/')
+        ])
 
-      const fallbackPredictions = generateFallbackPredictions(hostels, rooms, allocations)
+        const hostels = (hostelsResponse.results || []).map(h => ({
+          id: h.id,
+          name: h.name,
+          type: h.type,
+          capacity: h.capacity || 0,
+          currentOccupancy: h.currentOccupancy || h.current_occupancy || 0
+        }))
 
-      return NextResponse.json(fallbackPredictions)
+        const rooms = (roomsResponse.results || []).map(r => ({
+          id: r.id,
+          hostelId: r.hostel || r.hostelId || r.hostel_id,
+          roomNumber: r.roomNumber || r.room_number,
+          floor: r.floor,
+          capacity: r.capacity || 0,
+          currentOccupancy: r.currentOccupancy || r.current_occupancy || 0,
+          type: r.type,
+          facilities: r.facilities
+        }))
+
+        const allocations = (allocationsResponse.results || []).map(a => ({
+          id: a.id,
+          hostelId: a.hostel || a.hostelId || a.hostel_id,
+          roomId: a.room || a.roomId || a.room_id,
+          studentId: a.student || a.studentId || a.student_id,
+          allocationDate: a.allocationDate || a.allocation_date || a.created_at,
+          fees: a.fees || 0,
+          status: a.status || 'Active'
+        }))
+
+        const fallbackPredictions = generateFallbackPredictions(hostels, rooms, allocations)
+
+        return NextResponse.json(fallbackPredictions)
+      } catch (fallbackError) {
+        console.error('[HOSTEL_PREDICTIONS_GET] Fallback also failed:', fallbackError)
+        return NextResponse.json(generateFallbackPredictions([], [], []))
+      }
     }
 
     return new NextResponse(JSON.stringify({ error: 'Internal Error', details: errorMessage }), {

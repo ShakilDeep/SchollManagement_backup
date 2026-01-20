@@ -1,99 +1,60 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { startOfDay, endOfDay } from 'date-fns'
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const dateStr = searchParams.get('date')
-  const gradeId = searchParams.get('gradeId')
-  const sectionId = searchParams.get('sectionId')
-  const search = searchParams.get('search')
-
-  if (!dateStr) return new NextResponse('Date required', { status: 400 })
-  
-  const date = new Date(dateStr)
-  const start = startOfDay(date)
-  const end = endOfDay(date)
-
   try {
-    const whereClause: any = {
-       status: 'Active',
+    const { searchParams } = new URL(req.url)
+    const dateStr = searchParams.get('date')
+    const gradeId = searchParams.get('gradeId')
+    const sectionId = searchParams.get('sectionId')
+    const search = searchParams.get('search')
+
+    if (!dateStr) {
+      return new NextResponse('Date required', { status: 400 })
     }
     
-    // If we have a grade ID (and it's not 'all' or empty), filter by it
+    const date = new Date(dateStr)
+    const formattedDate = date.toISOString().split('T')[0]
+
+    const queryParams = new URLSearchParams()
+    queryParams.append('date', formattedDate)
+    
     if (gradeId && gradeId !== 'all') {
-        // Check if it's a UUID or a Name. The frontend might send "Grade 10" (name) or ID.
-        // The previous mock used names. The select dropdowns will likely use IDs now.
-        // Let's assume IDs for robustness, but if we switch frontend to IDs we must be consistent.
-        whereClause.gradeId = gradeId
+      queryParams.append('grade_id', gradeId)
     }
-
+    
     if (sectionId && sectionId !== 'all') {
-        whereClause.sectionId = sectionId
+      queryParams.append('section_id', sectionId)
     }
-
+    
     if (search) {
-      whereClause.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { rollNumber: { contains: search } }
-      ]
+      queryParams.append('search', search)
     }
 
-    const students = await db.student.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        rollNumber: true,
-        firstName: true,
-        lastName: true,
-        photo: true,
-        email: true,
-        phone: true,
-        grade: {
-          select: { name: true }
+    const response = await fetch(
+      `${BACKEND_URL}/api/attendance/by_date/?${queryParams.toString()}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
         },
-        section: {
-          select: { name: true }
-        },
-        attendances: {
-          select: {
-            status: true,
-            checkInTime: true,
-            checkOutTime: true
-          },
-          where: {
-            date: {
-              gte: start,
-              lte: end
-            }
-          }
-        }
-      },
-      orderBy: { rollNumber: 'asc' }
-    })
+        cache: 'no-store'
+      }
+    )
 
-    const data = students.map(student => {
-        const attendance = student.attendances[0]
-        return {
-            id: student.id,
-            rollNumber: student.rollNumber,
-            name: `${student.firstName} ${student.lastName}`,
-            grade: student.grade.name,
-            section: student.section.name,
-            status: attendance ? attendance.status : 'Unmarked', 
-            checkIn: attendance?.checkInTime ? new Date(attendance.checkInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : undefined,
-            checkOut: attendance?.checkOutTime ? new Date(attendance.checkOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : undefined,
-            avatar: student.photo,
-            email: student.email,
-            phone: student.phone
-        }
-    })
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: response.statusText }))
+      return NextResponse.json(errorData, { status: response.status })
+    }
 
-    return NextResponse.json(data)
+    const data = await response.json()
+    
+    const transformedData = data.results || data
+    
+    return NextResponse.json(transformedData)
   } catch (error) {
     console.error('[ATTENDANCE_GET]', error)
     return new NextResponse('Internal Error', { status: 500 })
@@ -101,67 +62,40 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-    try {
-        const body = await req.json()
-        const { date, attendanceData } = body
-        
-        if (!date || !attendanceData) {
-            return new NextResponse('Missing data', { status: 400 })
-        }
-
-        // Normalize to start of day to ensure consistency
-        const attendanceDate = startOfDay(new Date(date))
-
-        // Get a valid admin user for marking attendance
-        const adminUser = await db.user.findFirst({
-            where: {
-                role: 'SUPER_ADMIN'
-            }
-        })
-
-        const markedBy = adminUser?.id || 'cmk5xc4xt0011vqu49ighb5a6'
-
-        // Batch operations for parallel execution
-        const operations = attendanceData.map(async (item: any) => {
-            if (item.status === 'Unmarked') {
-                try {
-                    await db.attendance.delete({
-                        where: {
-                            studentId_date: {
-                                studentId: item.id,
-                                date: attendanceDate
-                            }
-                        }
-                    })
-                } catch (e) {
-                }
-            } else {
-                await db.attendance.upsert({
-                    where: {
-                        studentId_date: {
-                            studentId: item.id,
-                            date: attendanceDate
-                        }
-                    },
-                    update: {
-                        status: item.status,
-                    },
-                    create: {
-                        studentId: item.id,
-                        date: attendanceDate,
-                        status: item.status,
-                        markedBy,
-                    }
-                })
-            }
-        })
-
-        await Promise.all(operations)
-
-        return NextResponse.json({ success: true })
-
-    } catch (error) {
-        console.error('[ATTENDANCE_POST]', error)
-        return new NextResponse('Internal Error', { status: 500 })
+  try {
+    const body = await req.json()
+    const { date, attendanceData } = body
+    
+    if (!date || !attendanceData) {
+      return new NextResponse('Missing data', { status: 400 })
     }
+
+    const formattedDate = new Date(date).toISOString().split('T')[0]
+
+    const response = await fetch(
+      `${BACKEND_URL}/api/attendance/bulk_create/`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: formattedDate,
+          attendance_data: attendanceData
+        })
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: response.statusText }))
+      return NextResponse.json(errorData, { status: response.status })
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
+
+  } catch (error) {
+    console.error('[ATTENDANCE_POST]', error)
+    return new NextResponse('Internal Error', { status: 500 })
+  }
 }

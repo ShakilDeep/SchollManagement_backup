@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,54 +10,33 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    const where: any = {}
-    if (studentId) where.studentId = studentId
-    if (type) where.type = type
-    if (category) where.category = category
-    if (startDate && endDate) {
-      where.date = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      }
-    }
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (studentId) queryParams.student = studentId
+    if (type) queryParams.type = type
+    if (category) queryParams.category = category
+    if (startDate) queryParams.start_date = startDate
+    if (endDate) queryParams.end_date = endDate
 
-    const records = await db.behaviorRecord.findMany({
-      where,
-      include: {
-        Student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            rollNumber: true,
-            grade: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            section: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        User: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        date: 'desc',
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/behavior/', { query: queryParams })
+    const records = response.results || []
 
-    return NextResponse.json(records)
+    const transformedRecords = records.map((record: any) => ({
+      id: record.id,
+      studentId: record.student || record.studentId,
+      type: record.type,
+      category: record.category,
+      description: record.description,
+      points: record.points || 0,
+      reportedBy: record.reported_by || record.reportedBy,
+      actionTaken: record.action_taken || record.actionTaken,
+      parentNotified: record.parent_notified || record.parentNotified || false,
+      date: record.date || record.created_at || new Date().toISOString().split('T')[0],
+      student: record.student_details || record.Student,
+      reportedByUser: record.reported_by_details || record.User,
+    }))
+
+    return NextResponse.json(transformedRecords)
   } catch (error) {
     console.error('Error fetching behavior records:', error)
     return NextResponse.json({ error: 'Failed to fetch behavior records' }, { status: 500 })
@@ -73,27 +52,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const record = await db.behaviorRecord.create({
-      data: {
-        studentId,
+    const record = await fetchAPI('/behavior/', {
+      method: 'POST',
+      body: JSON.stringify({
+        student: studentId,
         type,
         category,
         description,
         points: points || 0,
-        reportedBy,
-        actionTaken,
-        parentNotified: parentNotified || false,
-      },
-      include: {
-        Student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            rollNumber: true,
-          },
-        },
-      },
+        reported_by: reportedBy,
+        action_taken: actionTaken,
+        parent_notified: parentNotified || false,
+      })
     })
 
     return NextResponse.json(record)

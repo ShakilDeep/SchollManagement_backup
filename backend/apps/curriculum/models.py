@@ -19,7 +19,7 @@ class Subject(models.Model):
         return self.name
 
 class Curriculum(models.Model):
-    id = models.CharField(max_length=255, primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     grade = models.ForeignKey(Grade, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     description = models.TextField(blank=True, null=True)
@@ -27,6 +27,10 @@ class Curriculum(models.Model):
 
     class Meta:
         unique_together = ['grade', 'subject']
+        indexes = [
+            models.Index(fields=['grade']),
+            models.Index(fields=['subject']),
+        ]
 
     def __str__(self):
         return f"{self.grade.name} - {self.subject.name}"

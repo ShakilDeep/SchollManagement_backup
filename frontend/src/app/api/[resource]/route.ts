@@ -1,6 +1,5 @@
-import { NextRequest } from 'next/server'
-import { getResourceConfigByPlural, getResourceConfig } from '@/lib/api/base/resource-configs'
-import { createCRUDRoute } from '@/lib/api/base/crud-factory'
+import { NextRequest, NextResponse } from 'next/server'
+import { fetchAPI } from '@/lib/api/client'
 
 function toCamelCase(str: string): string {
   return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase())
@@ -12,14 +11,22 @@ export async function GET(
 ) {
   const { resource } = await params
   const camelCaseResource = toCamelCase(resource)
-  const config = getResourceConfigByPlural(camelCaseResource) || getResourceConfig(camelCaseResource)
-
-  if (!config) {
-    return new Response('Resource not found', { status: 404 })
+  
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const queryString = searchParams.toString()
+    const endpoint = queryString ? `/${resource}/?${queryString}` : `/${resource}/`
+    const cookies = request.headers.get('cookie') || undefined
+    
+    const data = await fetchAPI(endpoint, { cookies })
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error(`GET /${camelCaseResource} error:`, error)
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to fetch resource' }),
+      { status: 500 }
+    )
   }
-
-  const handlers = createCRUDRoute(config)
-  return handlers.GET(request)
 }
 
 export async function POST(
@@ -28,12 +35,22 @@ export async function POST(
 ) {
   const { resource } = await params
   const camelCaseResource = toCamelCase(resource)
-  const config = getResourceConfigByPlural(camelCaseResource) || getResourceConfig(camelCaseResource)
-
-  if (!config) {
-    return new Response('Resource not found', { status: 404 })
+  
+  try {
+    const body = await request.json()
+    const cookies = request.headers.get('cookie') || undefined
+    const data = await fetchAPI(`/${resource}/`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      cookies,
+    })
+    
+    return NextResponse.json(data, { status: 201 })
+  } catch (error) {
+    console.error(`POST /${camelCaseResource} error:`, error)
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to create resource' }),
+      { status: 500 }
+    )
   }
-
-  const handlers = createCRUDRoute(config)
-  return handlers.POST(request)
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,17 +13,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await db.message.updateMany({
-      where: {
-        id: {
-          in: messageIds,
-        },
-      },
-      data: {
-        isRead: true,
-        readAt: new Date(),
-      },
-    })
+    // Mark each message as read via backend API
+    await Promise.all(
+      messageIds.map((id: string) =>
+        fetchAPI(`/messaging/${id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            is_read: true,
+            read_at: new Date().toISOString()
+          })
+        })
+      )
+    )
 
     return NextResponse.json({ success: true })
   } catch (error) {

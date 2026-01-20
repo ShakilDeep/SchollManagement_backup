@@ -1,5 +1,5 @@
 import { GeminiClient } from '../gemini-client'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 import { validateMessageData } from '../utils/data-validation'
 
 export interface MessageContext {
@@ -65,44 +65,42 @@ export class MessageReplySuggestionsService {
     const cached = this.getCachedData(cacheKey)
     if (cached) return cached
 
-    const [messages, sender, receiver] = await Promise.all([
-      db.message.findMany({
-        where: {
-          OR: [
-            { senderId: userId, receiverId: otherUserId },
-            { senderId: otherUserId, receiverId: userId }
-          ]
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: limit
-      }),
-      db.user.findUnique({
-        where: { id: userId },
-        select: { name: true, email: true, role: true }
-      }),
-      db.user.findUnique({
-        where: { id: otherUserId },
-        select: { name: true, email: true, role: true }
-      })
-    ])
+    try {
+      // Fetch messages from backend API
+      const response = await fetchAPI<{ results: any[] }>('/messages/')
+      const allMessages = response.results || []
 
-    const context: MessageContext[] = messages.map(m => ({
-      id: m.id,
-      senderId: m.senderId,
-      senderName: m.senderId === userId ? sender?.name || 'Unknown' : receiver?.name || 'Unknown',
-      receiverId: m.receiverId,
-      receiverName: m.receiverId === userId ? sender?.name || 'Unknown' : receiver?.name || 'Unknown',
-      subject: m.subject || undefined,
-      content: m.content,
-      type: m.type,
-      priority: m.priority,
-      createdAt: m.createdAt
-    }))
+      // Filter messages between the two users
+      const messages = allMessages
+        .filter((m: any) => {
+          const senderId = m.sender || m.senderId
+          const receiverId = m.receiver || m.receiverId
+          return (
+            (senderId === userId && receiverId === otherUserId) ||
+            (senderId === otherUserId && receiverId === userId)
+          )
+        })
+        .slice(0, limit)
 
-    this.setCachedData(cacheKey, context)
-    return context
+      const context: MessageContext[] = messages.map((m: any) => ({
+        id: m.id,
+        senderId: m.sender || m.senderId,
+        senderName: m.sender_name || m.senderName || 'Unknown',
+        receiverId: m.receiver || m.receiverId,
+        receiverName: m.receiver_name || m.receiverName || 'Unknown',
+        subject: m.subject || undefined,
+        content: m.content || '',
+        type: m.type || 'general',
+        priority: m.priority || 'normal',
+        createdAt: new Date(m.created_at || m.createdAt)
+      }))
+
+      this.setCachedData(cacheKey, context)
+      return context
+    } catch (error) {
+      console.error('Error loading message history from backend API:', error)
+      return []
+    }
   }
 
   async loadRecentMessages(userId: string, limit: number = 20): Promise<MessageContext[]> {
@@ -110,42 +108,39 @@ export class MessageReplySuggestionsService {
     const cached = this.getCachedData(cacheKey)
     if (cached) return cached
 
-    const messages = await db.message.findMany({
-      where: {
-        OR: [
-          { senderId: userId },
-          { receiverId: userId }
-        ]
-      },
-      include: {
-        sender: {
-          select: { name: true, email: true, role: true }
-        },
-        receiver: {
-          select: { name: true, email: true, role: true }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: limit
-    })
+    try {
+      // Fetch messages from backend API
+      const response = await fetchAPI<{ results: any[] }>('/messages/')
+      const allMessages = response.results || []
 
-    const context: MessageContext[] = messages.map(m => ({
-      id: m.id,
-      senderId: m.senderId,
-      senderName: m.sender.name,
-      receiverId: m.receiverId,
-      receiverName: m.receiver.name,
-      subject: m.subject || undefined,
-      content: m.content,
-      type: m.type,
-      priority: m.priority,
-      createdAt: m.createdAt
-    }))
+      // Filter messages involving the user
+      const messages = allMessages
+        .filter((m: any) => {
+          const senderId = m.sender || m.senderId
+          const receiverId = m.receiver || m.receiverId
+          return senderId === userId || receiverId === userId
+        })
+        .slice(0, limit)
 
-    this.setCachedData(cacheKey, context)
-    return context
+      const context: MessageContext[] = messages.map((m: any) => ({
+        id: m.id,
+        senderId: m.sender || m.senderId,
+        senderName: m.sender_name || m.senderName || 'Unknown',
+        receiverId: m.receiver || m.receiverId,
+        receiverName: m.receiver_name || m.receiverName || 'Unknown',
+        subject: m.subject || undefined,
+        content: m.content || '',
+        type: m.type || 'general',
+        priority: m.priority || 'normal',
+        createdAt: new Date(m.created_at || m.createdAt)
+      }))
+
+      this.setCachedData(cacheKey, context)
+      return context
+    } catch (error) {
+      console.error('Error loading recent messages from backend API:', error)
+      return []
+    }
   }
 
   async generateReplySuggestions(

@@ -1,103 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const type = searchParams.get('type') || 'overview'
 
-    let data = {}
+    let data: any = {}
 
     switch (type) {
       case 'overview': {
-        const [activeUsers, failedLogins, recentSecurityEvents, auditLogs] = await Promise.all([
-          db.user.count({
-            where: {
-              lastLoginAt: {
-                gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          db.auditLog.count({
-            where: {
-              action: 'LOGIN_FAILED',
-              createdAt: {
-                gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          db.auditLog.findMany({
-            where: {
-              action: {
-                in: ['LOGIN_FAILED', 'PASSWORD_RESET', 'PERMISSION_DENIED'],
-              },
-            },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-          }),
-          db.auditLog.groupBy({
-            by: ['action'],
-            _count: true,
-            where: {
-              action: {
-                in: ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET', 'PERMISSION_DENIED'],
-              },
-              createdAt: {
-                gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
+        // Fetch security overview data from backend
+        const [auditResponse, usersResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/audit/', { query: { limit: '100' } }),
+          fetchAPI<{ results: any[] }>('/users/')
         ])
+
+        const auditLogs = auditResponse.results || []
+        const users = usersResponse.results || []
+
+        // Calculate metrics from fetched data
+        const now = new Date()
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+        const failedLogins = auditLogs.filter((log: any) =>
+          log.action === 'LOGIN_FAILED' &&
+          new Date(log.created_at || log.createdAt) > dayAgo
+        ).length
+
+        const recentSecurityEvents = auditLogs
+          .filter((log: any) =>
+            ['LOGIN_FAILED', 'PASSWORD_RESET', 'PERMISSION_DENIED'].includes(log.action)
+          )
+          .slice(0, 20)
+          .map((log: any) => ({
+            ...log,
+            user: log.user_details || log.user
+          }))
+
+        // Group audit logs by action
+        const auditLogsGrouped = auditLogs
+          .filter((log: any) => {
+            const logDate = new Date(log.created_at || log.createdAt)
+            return ['LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET', 'PERMISSION_DENIED'].includes(log.action) &&
+              logDate > weekAgo
+          })
+          .reduce((acc: any, log: any) => {
+            acc[log.action] = (acc[log.action] || 0) + 1
+            return acc
+          }, {})
+
+        const activeUsers = users.filter((u: any) => {
+          const lastLogin = u.last_login_at || u.lastLoginAt
+          return lastLogin && new Date(lastLogin) > dayAgo
+        }).length
 
         data = {
           activeUsers,
           failedLogins,
           recentSecurityEvents,
-          auditLogs,
+          auditLogs: Object.entries(auditLogsGrouped).map(([action, _count]) => ({
+            action,
+            _count: { _count: _count as number }
+          }))
         }
         break
       }
 
       case 'users': {
-        const [users, lockedUsers, inactiveUsers] = await Promise.all([
-          db.user.findMany({
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-              lastLoginAt: true,
-              createdAt: true,
-            },
-            orderBy: { lastLoginAt: 'desc' },
-          }),
-          db.user.count({
-            where: {
-              lockedUntil: {
-                gt: new Date(),
-              },
-            },
-          }),
-          db.user.count({
-            where: {
-              lastLoginAt: {
-                lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-        ])
+        const usersResponse = await fetchAPI<{ results: any[] }>('/users/')
+        const users = usersResponse.results || []
+
+        const now = new Date()
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+
+        const transformedUsers = users.map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          lastLoginAt: u.last_login_at || u.lastLoginAt,
+          createdAt: u.created_at || u.createdAt,
+        }))
+
+        const lockedUsers = users.filter((u: any) => {
+          const lockedUntil = u.locked_until || u.lockedUntil
+          return lockedUntil && new Date(lockedUntil) > now
+        }).length
+
+        const inactiveUsers = users.filter((u: any) => {
+          const lastLogin = u.last_login_at || u.lastLoginAt
+          return !lastLogin || new Date(lastLogin) < ninetyDaysAgo
+        }).length
 
         data = {
-          users,
+          users: transformedUsers,
           lockedUsers,
           inactiveUsers,
           totalUsers: users.length,
@@ -106,42 +104,38 @@ export async function GET(req: NextRequest) {
       }
 
       case 'passwords': {
-        const [passwordResets, weakPasswords, recentPasswordChanges] = await Promise.all([
-          db.auditLog.count({
-            where: {
-              action: 'PASSWORD_RESET',
-              createdAt: {
-                gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          db.user.count({
-            where: {
-              passwordChangedAt: {
-                lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          db.auditLog.findMany({
-            where: {
-              action: 'PASSWORD_CHANGE',
-              createdAt: {
-                gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-              },
-            },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
-          }),
+        const [auditResponse, usersResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/audit/', { query: { limit: '100' } }),
+          fetchAPI<{ results: any[] }>('/users/')
         ])
+
+        const auditLogs = auditResponse.results || []
+        const users = usersResponse.results || []
+
+        const now = new Date()
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+
+        const passwordResets = auditLogs.filter((log: any) =>
+          log.action === 'PASSWORD_RESET' &&
+          new Date(log.created_at || log.createdAt) > thirtyDaysAgo
+        ).length
+
+        const weakPasswords = users.filter((u: any) => {
+          const passwordChanged = u.password_changed_at || u.passwordChangedAt
+          return !passwordChanged || new Date(passwordChanged) < ninetyDaysAgo
+        }).length
+
+        const recentPasswordChanges = auditLogs
+          .filter((log: any) =>
+            log.action === 'PASSWORD_CHANGE' &&
+            new Date(log.created_at || log.createdAt) > thirtyDaysAgo
+          )
+          .slice(0, 20)
+          .map((log: any) => ({
+            ...log,
+            user: log.user_details || log.user
+          }))
 
         data = {
           passwordResets,
@@ -152,30 +146,37 @@ export async function GET(req: NextRequest) {
       }
 
       case 'permissions': {
-        const [roleCounts, permissionDenials, adminUsers] = await Promise.all([
-          db.user.groupBy({
-            by: ['role'],
-            _count: true,
-          }),
-          db.auditLog.count({
-            where: {
-              action: 'PERMISSION_DENIED',
-              createdAt: {
-                gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-              },
-            },
-          }),
-          db.user.count({
-            where: {
-              role: {
-                in: ['SUPER_ADMIN', 'ADMIN'],
-              },
-            },
-          }),
+        const [auditResponse, usersResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/audit/', { query: { limit: '1000' } }),
+          fetchAPI<{ results: any[] }>('/users/')
         ])
 
+        const auditLogs = auditResponse.results || []
+        const users = usersResponse.results || []
+
+        const now = new Date()
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+        // Group users by role
+        const roleCounts = users.reduce((acc: any, u: any) => {
+          acc[u.role] = (acc[u.role] || 0) + 1
+          return acc
+        }, {})
+
+        const permissionDenials = auditLogs.filter((log: any) =>
+          log.action === 'PERMISSION_DENIED' &&
+          new Date(log.created_at || log.createdAt) > thirtyDaysAgo
+        ).length
+
+        const adminUsers = users.filter((u: any) =>
+          ['SUPER_ADMIN', 'ADMIN'].includes(u.role)
+        ).length
+
         data = {
-          roleCounts,
+          roleCounts: Object.entries(roleCounts).map(([role, count]) => ({
+            role,
+            _count: { _count: count as number }
+          })),
           permissionDenials,
           adminUsers,
         }
@@ -184,54 +185,63 @@ export async function GET(req: NextRequest) {
 
       case 'activity': {
         const { startDate, endDate } = Object.fromEntries(searchParams)
-        const where: any = {}
-        
-        if (startDate && endDate) {
-          where.createdAt = {
-            gte: new Date(startDate),
-            lte: new Date(endDate),
-          }
-        } else {
-          where.createdAt = {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-          }
-        }
+        const queryParams: Record<string, string> = { limit: '1000' }
+        if (startDate) queryParams.start_date = startDate
+        if (endDate) queryParams.end_date = endDate
 
-        const [loginActivity, resourceAccess, systemChanges] = await Promise.all([
-          db.auditLog.groupBy({
-            by: ['createdAt'],
-            _count: true,
-            where: {
-              ...where,
-              action: {
-                in: ['LOGIN', 'LOGOUT', 'LOGIN_FAILED'],
-              },
-            },
-          }),
-          db.auditLog.groupBy({
-            by: ['entity'],
-            _count: true,
-            where: {
-              ...where,
-              action: 'READ',
-            },
-          }),
-          db.auditLog.groupBy({
-            by: ['action'],
-            _count: true,
-            where: {
-              ...where,
-              action: {
-                in: ['CREATE', 'UPDATE', 'DELETE'],
-              },
-            },
-          }),
-        ])
+        const auditResponse = await fetchAPI<{ results: any[] }>('/audit/', { query: queryParams })
+        const auditLogs = auditResponse.results || []
+
+        const now = new Date()
+        const defaultStartDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+        const filteredLogs = auditLogs.filter((log: any) => {
+          const logDate = new Date(log.created_at || log.createdAt)
+          if (startDate && endDate) {
+            return logDate >= new Date(startDate) && logDate <= new Date(endDate)
+          }
+          return logDate > defaultStartDate
+        })
+
+        // Group by login activity
+        const loginActivity = filteredLogs
+          .filter((log: any) => ['LOGIN', 'LOGOUT', 'LOGIN_FAILED'].includes(log.action))
+          .reduce((acc: any, log: any) => {
+            const date = (log.created_at || log.createdAt).split('T')[0]
+            acc[date] = (acc[date] || 0) + 1
+            return acc
+          }, {})
+
+        // Group by resource access
+        const resourceAccess = filteredLogs
+          .filter((log: any) => log.action === 'READ')
+          .reduce((acc: any, log: any) => {
+            const entity = log.entity || 'Unknown'
+            acc[entity] = (acc[entity] || 0) + 1
+            return acc
+          }, {})
+
+        // Group by system changes
+        const systemChanges = filteredLogs
+          .filter((log: any) => ['CREATE', 'UPDATE', 'DELETE'].includes(log.action))
+          .reduce((acc: any, log: any) => {
+            acc[log.action] = (acc[log.action] || 0) + 1
+            return acc
+          }, {})
 
         data = {
-          loginActivity,
-          resourceAccess,
-          systemChanges,
+          loginActivity: Object.entries(loginActivity).map(([createdAt, _count]) => ({
+            createdAt,
+            _count: { _count: _count as number }
+          })),
+          resourceAccess: Object.entries(resourceAccess).map(([entity, _count]) => ({
+            entity,
+            _count: { _count: _count as number }
+          })),
+          systemChanges: Object.entries(systemChanges).map(([action, _count]) => ({
+            action,
+            _count: { _count: _count as number }
+          })),
         }
         break
       }
@@ -255,73 +265,86 @@ export async function POST(req: NextRequest) {
     switch (type) {
       case 'lock_user': {
         const { lockoutDuration = 900 } = data
-        const lockedUntil = new Date(Date.now() + lockoutDuration * 1000)
+        const lockedUntil = new Date(Date.now() + lockoutDuration * 1000).toISOString()
 
-        await db.user.update({
-          where: { id: userId },
-          data: { lockedUntil },
+        // Update user via backend API
+        await fetchAPI(`/users/${userId}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            locked_until: lockedUntil
+          })
         })
 
-        await db.auditLog.create({
-          data: {
-            userId,
+        // Create audit log
+        await fetchAPI('/audit/', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: userId,
             action: 'USER_LOCKED',
             entity: 'User',
-            entityId: userId,
-            details: `User locked until ${lockedUntil.toISOString()}`,
-          },
+            entity_id: userId,
+            details: `User locked until ${lockedUntil}`,
+          })
         })
 
         return NextResponse.json({ success: true, lockedUntil })
       }
 
       case 'unlock_user': {
-        await db.user.update({
-          where: { id: userId },
-          data: { lockedUntil: null, failedLoginAttempts: 0 },
+        await fetchAPI(`/users/${userId}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            locked_until: null,
+            failed_login_attempts: 0
+          })
         })
 
-        await db.auditLog.create({
-          data: {
-            userId,
+        await fetchAPI('/audit/', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: userId,
             action: 'USER_UNLOCKED',
             entity: 'User',
-            entityId: userId,
+            entity_id: userId,
             details: 'User unlocked by administrator',
-          },
+          })
         })
 
         return NextResponse.json({ success: true })
       }
 
       case 'force_password_reset': {
-        await db.user.update({
-          where: { id: userId },
-          data: { passwordResetRequired: true },
+        await fetchAPI(`/users/${userId}/`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            password_reset_required: true
+          })
         })
 
-        await db.auditLog.create({
-          data: {
-            userId,
+        await fetchAPI('/audit/', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: userId,
             action: 'PASSWORD_RESET_REQUIRED',
             entity: 'User',
-            entityId: userId,
+            entity_id: userId,
             details: 'Password reset required by administrator',
-          },
+          })
         })
 
         return NextResponse.json({ success: true })
       }
 
       case 'revoke_sessions': {
-        await db.auditLog.create({
-          data: {
-            userId,
+        await fetchAPI('/audit/', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: userId,
             action: 'SESSIONS_REVOKED',
             entity: 'User',
-            entityId: userId,
+            entity_id: userId,
             details: 'All user sessions revoked by administrator',
-          },
+          })
         })
 
         return NextResponse.json({ success: true })

@@ -1,69 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { sectionFormSchema } from '@/lib/validations'
-import { success, error, handleApiError, created } from '@/lib/api/base/api-handler'
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch all grades with their sections
-    const grades = await db.grade.findMany({
-      include: {
-        sections: {
-          select: {
-            id: true,
-            name: true,
-            roomNumber: true,
-            capacity: true,
-            currentStrength: true
-          }
-        },
-        _count: {
-          select: {
-            sections: true
-          }
-        }
+    const gradesUrl = new URL('/api/grades/', BACKEND_URL)
+    const gradesResponse = await fetch(gradesUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      orderBy: {
-        numericValue: 'asc'
-      }
     })
+    const gradesData = await gradesResponse.json()
+    if (!gradesResponse.ok) {
+      return NextResponse.json(gradesData, { status: gradesResponse.status })
+    }
 
-    // Fetch current academic year
-    const currentAcademicYear = await db.academicYear.findFirst({
-      where: {
-        isCurrent: true
+    const sectionsUrl = new URL('/api/sections/', BACKEND_URL)
+    const sectionsResponse = await fetch(sectionsUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      select: {
-        id: true,
-        name: true,
-        startDate: true,
-        endDate: true
-      }
     })
+    const sectionsData = await sectionsResponse.json()
+    if (!sectionsResponse.ok) {
+      return NextResponse.json(sectionsData, { status: sectionsResponse.status })
+    }
 
-    // Transform data for frontend consumption
-    const transformedGrades = grades.map(grade => ({
+    const transformedGrades = gradesData.results?.map((grade: any) => ({
       id: grade.id,
       name: grade.name,
-      numericValue: grade.numericValue,
+      numericValue: grade.numeric_value,
       description: grade.description,
-      sections: grade.sections.map(section => ({
-        id: section.id,
-        name: section.name,
-        displayName: `${grade.name} - Section ${section.name}`,
-        roomNumber: section.roomNumber,
-        capacity: section.capacity,
-        currentStrength: section.currentStrength
-      }))
-    }))
+      sections: (sectionsData.results || [])
+        .filter((section: any) => section.grade === grade.id)
+        .map((section: any) => ({
+          id: section.id,
+          name: section.name,
+          displayName: `${grade.name} - Section ${section.name}`,
+          roomNumber: section.room_number,
+          capacity: section.capacity,
+          currentStrength: section.current_strength
+        }))
+    })) || []
 
     return NextResponse.json({
       grades: transformedGrades,
-      currentAcademicYear,
+      currentAcademicYear: null,
       defaultSelection: {
-        grade: grades.find(g => g.name === 'Grade 10')?.id || grades[0]?.id,
-        section: grades.find(g => g.name === 'Grade 10')?.sections.find(s => s.name === 'A')?.id || 
-                 grades[0]?.sections[0]?.id
+        grade: transformedGrades.find((g: any) => g.name === 'Grade 10')?.id || transformedGrades[0]?.id,
+        section: transformedGrades.find((g: any) => g.name === 'Grade 10')?.sections.find((s: any) => s.name === 'A')?.id ||
+                 transformedGrades[0]?.sections[0]?.id
       }
     })
   } catch (error) {
@@ -76,32 +64,26 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return handleApiError(async () => {
+  try {
     const body = await request.json()
-    const validatedData = await sectionFormSchema.parseAsync(body)
-
-    const section = await db.section.create({
-      data: {
-        name: validatedData.name,
-        grade: { connect: { id: validatedData.grade } }
+    const url = new URL('/api/sections/', BACKEND_URL)
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      include: {
-        grade: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      body: JSON.stringify(body),
     })
-
-    return created({
-      id: section.id,
-      name: section.name,
-      grade: section.grade,
-      roomNumber: section.roomNumber,
-      capacity: section.capacity,
-      currentStrength: section.currentStrength
-    })
-  }, 'POST /sections')
+    const data = await response.json()
+    if (!response.ok) {
+      return NextResponse.json(data, { status: response.status })
+    }
+    return NextResponse.json(data, { status: 201 })
+  } catch (error) {
+    console.error('Error creating section:', error)
+    return NextResponse.json(
+      { error: 'Failed to create section' },
+      { status: 500 }
+    )
+  }
 }

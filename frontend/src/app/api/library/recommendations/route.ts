@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 import { libraryRecommendationsService } from '@/lib/ai/services/library-recommendations'
 import { retryWithBackoff } from '@/lib/utils/retry'
 
@@ -15,48 +15,34 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const [borrowals, books] = await Promise.all([
-      db.libraryBorrowal.findMany({
-        where: {
-          studentId
-        },
-        orderBy: {
-          borrowDate: 'desc'
-        },
-        take: 20
-      }),
-      db.book.findMany({
-        where: {
-          availableCopies: {
-            gt: 0
-          }
-        },
-        orderBy: {
-          title: 'asc'
-        }
-      })
-    ])
+    // Fetch borrowals from backend API
+    const borrowalsResponse = await fetchAPI<{ results: any[] }>(`/library/borrowals/?student=${studentId}`)
+    const borrowals = borrowalsResponse.results || []
 
-    const borrowingHistory = borrowals.map(b => ({
+    // Fetch books from backend API
+    const booksResponse = await fetchAPI<{ results: any[] }>('/library/books/')
+    const books = booksResponse.results || []
+
+    const borrowingHistory = borrowals.map((b: any) => ({
       id: b.id,
-      bookTitle: b.bookTitle,
-      bookIsbn: b.bookIsbn,
-      borrowDate: b.borrowDate.toISOString(),
-      returnDate: b.returnDate?.toISOString(),
-      status: b.returnDate ? 'Returned' : b.status
+      bookTitle: b.book_title || b.bookTitle || 'Unknown',
+      bookIsbn: b.book_isbn || b.bookIsbn || '',
+      borrowDate: b.borrow_date || b.borrowDate || new Date().toISOString(),
+      returnDate: b.return_date || b.returnDate,
+      status: b.return_date ? 'Returned' : (b.status || 'Borrowed')
     }))
 
-    const allBooks = books.map(b => ({
+    const allBooks = books.map((b: any) => ({
       id: b.id,
       isbn: b.isbn,
-      title: b.title,
-      author: b.author,
+      title: b.title || 'Unknown',
+      author: b.author || 'Unknown',
       category: b.category,
-      totalCopies: b.totalCopies,
-      availableCopies: b.availableCopies,
+      totalCopies: b.total_copies || b.totalCopies || 0,
+      availableCopies: b.available_copies || b.availableCopies || 0,
       location: b.location,
       publisher: b.publisher,
-      publicationYear: b.publicationYear
+      publicationYear: b.publication_year || b.publicationYear
     }))
 
     const recommendations = await retryWithBackoff(

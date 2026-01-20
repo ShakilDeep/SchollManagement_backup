@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export interface AttendancePrediction {
   studentId: string
@@ -46,96 +46,98 @@ export class AttendancePredictionService {
   private readonly HIGH_CONFIDENCE_THRESHOLD = 0.85
 
   async predictAttendanceForDate(studentId: string, targetDate: Date): Promise<AttendancePrediction | null> {
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      select: { firstName: true, lastName: true }
-    })
+    try {
+      const studentResponse = await fetchAPI<any>(`/students/${studentId}/`)
+      const studentName = `${studentResponse.first_name || studentResponse.firstName || ''} ${studentResponse.last_name || studentResponse.lastName || ''}`.trim() || 'Unknown Student'
 
-    if (!student) return null
+      const historicalData = await this.fetchHistoricalAttendance(studentId, 60)
 
-    const historicalData = await this.fetchHistoricalAttendance(studentId, 60)
-    
-    if (historicalData.length < this.MIN_DATA_DAYS) {
-      return this.generateFallbackPrediction(studentId, `${student.firstName} ${student.lastName}`, targetDate, historicalData)
-    }
+      if (historicalData.length < this.MIN_DATA_DAYS) {
+        return this.generateFallbackPrediction(studentId, studentName, targetDate, historicalData)
+      }
 
-    const pattern = this.analyzeDayOfWeekPattern(historicalData, targetDate)
-    const recentTrend = this.analyzeRecentTrend(historicalData)
-    const historicalAccuracy = this.calculateHistoricalAccuracy(historicalData)
-    const dataQuality = this.calculateDataQuality(historicalData)
+      const pattern = this.analyzeDayOfWeekPattern(historicalData, targetDate)
+      const recentTrend = this.analyzeRecentTrend(historicalData)
+      const historicalAccuracy = this.calculateHistoricalAccuracy(historicalData)
+      const dataQuality = this.calculateDataQuality(historicalData)
 
-    const predictedStatus = this.predictStatus(pattern, recentTrend, historicalData)
-    const confidence = this.calculateConfidence(
-      historicalAccuracy,
-      pattern.presentRate,
-      dataQuality,
-      recentTrend
-    )
-
-    const riskFactors = this.identifyRiskFactors(historicalData, pattern, recentTrend)
-    const recommendations = this.generateRecommendations(predictedStatus, riskFactors, recentTrend)
-
-    return {
-      studentId,
-      studentName: `${student.firstName} ${student.lastName}`,
-      predictedStatus,
-      confidence: Math.max(0.75, Math.min(0.98, confidence)),
-      predictionDate: targetDate,
-      riskFactors,
-      metrics: {
+      const predictedStatus = this.predictStatus(pattern, recentTrend, historicalData)
+      const confidence = this.calculateConfidence(
         historicalAccuracy,
-        patternConsistency: pattern.presentRate,
-        recentTrend: recentTrend.trend,
+        pattern.presentRate,
         dataQuality,
-        daysAnalyzed: historicalData.length
-      },
-      recommendations
+        recentTrend
+      )
+
+      const riskFactors = this.identifyRiskFactors(historicalData, pattern, recentTrend)
+      const recommendations = this.generateRecommendations(predictedStatus, riskFactors, recentTrend)
+
+      return {
+        studentId,
+        studentName,
+        predictedStatus,
+        confidence: Math.max(0.75, Math.min(0.98, confidence)),
+        predictionDate: targetDate,
+        riskFactors,
+        metrics: {
+          historicalAccuracy,
+          patternConsistency: pattern.presentRate,
+          recentTrend: recentTrend.trend,
+          dataQuality,
+          daysAnalyzed: historicalData.length
+        },
+        recommendations
+      }
+    } catch (error) {
+      console.error('Error predicting attendance:', error)
+      return null
     }
   }
 
   async predictWeeklyAttendance(studentId: string, startDate: Date): Promise<WeeklyAttendancePrediction | null> {
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      select: { firstName: true, lastName: true }
-    })
+    try {
+      const studentResponse = await fetchAPI<any>(`/students/${studentId}/`)
+      const studentName = `${studentResponse.first_name || studentResponse.firstName || ''} ${studentResponse.last_name || studentResponse.lastName || ''}`.trim() || 'Unknown Student'
 
-    if (!student) return null
+      const historicalData = await this.fetchHistoricalAttendance(studentId, 90)
 
-    const historicalData = await this.fetchHistoricalAttendance(studentId, 90)
-    
-    if (historicalData.length < this.MIN_DATA_DAYS) {
-      return null
-    }
-
-    const weeklyPredictions = []
-    const predictions: AttendancePrediction[] = []
-
-    for (let i = 0; i < 7; i++) {
-      const targetDate = new Date(startDate)
-      targetDate.setDate(targetDate.getDate() + i)
-
-      const prediction = await this.predictAttendanceForDate(studentId, targetDate)
-      if (prediction) {
-        predictions.push(prediction)
-        weeklyPredictions.push({
-          date: targetDate,
-          predictedStatus: prediction.predictedStatus,
-          confidence: prediction.confidence
-        })
+      if (historicalData.length < this.MIN_DATA_DAYS) {
+        return null
       }
-    }
 
-    const averageConfidence = predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length
-    const predictedAttendanceRate = this.calculatePredictedAttendanceRate(weeklyPredictions)
-    const overallRisk = this.calculateOverallRisk(weeklyPredictions)
+      const weeklyPredictions = []
+      const predictions: AttendancePrediction[] = []
 
-    return {
-      studentId,
-      studentName: `${student.firstName} ${student.lastName}`,
-      weeklyPredictions,
-      averageConfidence: Math.max(0.75, averageConfidence),
-      predictedAttendanceRate,
-      overallRisk
+      for (let i = 0; i < 7; i++) {
+        const targetDate = new Date(startDate)
+        targetDate.setDate(targetDate.getDate() + i)
+
+        const prediction = await this.predictAttendanceForDate(studentId, targetDate)
+        if (prediction) {
+          predictions.push(prediction)
+          weeklyPredictions.push({
+            date: targetDate,
+            predictedStatus: prediction.predictedStatus,
+            confidence: prediction.confidence
+          })
+        }
+      }
+
+      const averageConfidence = predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length
+      const predictedAttendanceRate = this.calculatePredictedAttendanceRate(weeklyPredictions)
+      const overallRisk = this.calculateOverallRisk(weeklyPredictions)
+
+      return {
+        studentId,
+        studentName,
+        weeklyPredictions,
+        averageConfidence: Math.max(0.75, averageConfidence),
+        predictedAttendanceRate,
+        overallRisk
+      }
+    } catch (error) {
+      console.error('Error predicting weekly attendance:', error)
+      return null
     }
   }
 
@@ -153,20 +155,30 @@ export class AttendancePredictionService {
   }
 
   private async fetchHistoricalAttendance(studentId: string, days: number): Promise<any[]> {
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - days)
+    try {
+      const response = await fetchAPI<{ results: any[] }>(`/attendance/?student=${studentId}`)
+      const attendances = response.results || []
 
-    return db.attendance.findMany({
-      where: {
-        studentId,
-        date: {
-          gte: startDate,
-          lte: new Date()
-        }
-      },
-      orderBy: { date: 'desc' },
-      take: days
-    })
+      // Filter by date range (last N days)
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
+      return attendances
+        .filter((a: any) => {
+          const attendanceDate = new Date(a.date)
+          return attendanceDate >= startDate && attendanceDate <= new Date()
+        })
+        .slice(0, days)
+        .map((a: any) => ({
+          id: a.id,
+          studentId: a.student || a.studentId,
+          date: new Date(a.date),
+          status: a.type === 'PRESENT' ? 'Present' : a.type === 'ABSENT' ? 'Absent' : a.type === 'LATE' ? 'Late' : 'HalfDay'
+        }))
+    } catch (error) {
+      console.error('Error fetching historical attendance from backend API:', error)
+      return []
+    }
   }
 
   private analyzeDayOfWeekPattern(historicalData: any[], targetDate: Date): AttendancePattern {

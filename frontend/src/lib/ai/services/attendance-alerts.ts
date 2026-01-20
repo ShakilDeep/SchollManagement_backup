@@ -1,5 +1,5 @@
 import { GeminiClient } from '../gemini-client'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 import { validateAttendanceRecords } from '../utils/data-validation'
 
 export interface AttendanceRecord {
@@ -88,42 +88,46 @@ export class AttendanceAlertsService {
     const cached = this.getCachedData(cacheKey)
     if (cached) return cached
 
-    const where: any = {}
-    if (options?.studentId) where.studentId = options.studentId
-    if (options?.startDate) where.date = { ...where.date, gte: options.startDate }
-    if (options?.endDate) where.date = { ...where.date, lte: options.endDate }
+    try {
+      // Build query parameters
+      const queryParams: Record<string, string> = {}
+      if (options?.studentId) queryParams.student = options.studentId
+      if (options?.gradeId) queryParams.grade = options.gradeId
+      if (options?.sectionId) queryParams.section = options.sectionId
+      if (options?.limit) queryParams.page_size = String(options.limit)
 
-    const attendances = await db.attendance.findMany({
-      where,
-      include: {
-        student: {
-          include: {
-            section: {
-              include: {
-                grade: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        date: 'desc'
-      },
-      take: options?.limit || 1000
-    })
+      // Fetch attendance from backend API
+      const response = await fetchAPI<{ results: Array<any> }>('/attendance/', { query: queryParams })
 
-    const records: AttendanceRecord[] = attendances.map(a => ({
-      id: a.id,
-      studentId: a.studentId,
-      studentName: `${a.student.firstName} ${a.student.lastName}`,
-      date: a.date,
-      status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
-      checkIn: a.checkInTime?.toISOString(),
-      checkOut: a.checkOutTime?.toISOString()
-    }))
+      const attendances = response.results || []
 
-    this.setCachedData(cacheKey, records)
-    return records
+      // Filter by date range if provided
+      let filteredAttendances = attendances
+      if (options?.startDate || options?.endDate) {
+        filteredAttendances = attendances.filter(a => {
+          const attendanceDate = new Date(a.date)
+          if (options?.startDate && attendanceDate < options.startDate) return false
+          if (options?.endDate && attendanceDate > options.endDate) return false
+          return true
+        })
+      }
+
+      const records: AttendanceRecord[] = filteredAttendances.map((a: any) => ({
+        id: a.id,
+        studentId: a.student || a.studentId,
+        studentName: `${a.student_first_name || ''} ${a.student_last_name || ''}`.trim() || a.student_name || 'Unknown',
+        date: new Date(a.date),
+        status: a.type === 'PRESENT' ? 'Present' : a.type === 'ABSENT' ? 'Absent' : a.type === 'LATE' ? 'Late' : 'HalfDay',
+        checkIn: a.check_in,
+        checkOut: a.check_out
+      }))
+
+      this.setCachedData(cacheKey, records)
+      return records
+    } catch (error) {
+      console.error('Error loading attendance records from backend API:', error)
+      return []
+    }
   }
 
   async loadStudentAttendanceRecords(studentId: string, days: number = 30): Promise<AttendanceRecord[]> {
@@ -142,66 +146,44 @@ export class AttendanceAlertsService {
     const cached = this.getCachedData(cacheKey)
     if (cached) return cached
 
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - days)
+    try {
+      // Build query parameters
+      const queryParams: Record<string, string> = {
+        grade: gradeId,
+        page_size: '2000'
+      }
+      if (sectionId) queryParams.section = sectionId
 
-    const [attendances, students] = await Promise.all([
-      db.attendance.findMany({
-        where: {
-          date: {
-            gte: startDate,
-            lte: new Date()
-          },
-          student: {
-            gradeId,
-            ...(sectionId ? { sectionId } : {})
-          }
-        },
-        select: {
-          id: true,
-          studentId: true,
-          date: true,
-          status: true,
-          checkInTime: true,
-          checkOutTime: true,
-          student: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          }
-        },
-        orderBy: {
-          date: 'desc'
-        },
-        take: 2000
-      }),
-      db.student.findMany({
-        where: {
-          gradeId,
-          ...(sectionId ? { sectionId } : {})
-        },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true
-        },
-        take: 1000
+      // Fetch attendance from backend API
+      const response = await fetchAPI<{ results: Array<any> }>('/attendance/', { query: queryParams })
+
+      const attendances = response.results || []
+
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
+      // Filter by date range
+      const filteredAttendances = attendances.filter((a: any) => {
+        const attendanceDate = new Date(a.date)
+        return attendanceDate >= startDate && attendanceDate <= new Date()
       })
-    ])
 
-    const records: AttendanceRecord[] = attendances.map(a => ({
-      id: a.id,
-      studentId: a.studentId,
-      studentName: `${a.student.firstName} ${a.student.lastName}`,
-      date: a.date,
-      status: a.status as 'Present' | 'Absent' | 'Late' | 'HalfDay',
-      checkIn: a.checkInTime?.toISOString(),
-      checkOut: a.checkOutTime?.toISOString()
-    }))
+      const records: AttendanceRecord[] = filteredAttendances.map((a: any) => ({
+        id: a.id,
+        studentId: a.student || a.studentId,
+        studentName: `${a.student_first_name || ''} ${a.student_last_name || ''}`.trim() || a.student_name || 'Unknown',
+        date: new Date(a.date),
+        status: a.type === 'PRESENT' ? 'Present' : a.type === 'ABSENT' ? 'Absent' : a.type === 'LATE' ? 'Late' : 'HalfDay',
+        checkIn: a.check_in,
+        checkOut: a.check_out
+      }))
 
-    this.setCachedData(cacheKey, records)
-    return records
+      this.setCachedData(cacheKey, records)
+      return records
+    } catch (error) {
+      console.error('Error loading grade attendance records from backend API:', error)
+      return []
+    }
   }
 
   async analyzeAbsencePattern(attendanceRecords: AttendanceRecord[]): Promise<AbsencePattern> {

@@ -52,7 +52,7 @@ class Parent(models.Model):
         return f"{self.first_name} {self.last_name}"
 
 class Student(models.Model):
-    id = models.CharField(max_length=255, primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     roll_number = models.CharField(max_length=20, unique=True)
     admission_number = models.CharField(max_length=20, unique=True)
@@ -96,6 +96,8 @@ class Student(models.Model):
             models.Index(fields=['section']),
             models.Index(fields=['status']),
             models.Index(fields=['first_name', 'last_name']),
+            models.Index(fields=['admission_date']),
+            models.Index(fields=['date_of_birth']),
         ]
 
     def __str__(self):

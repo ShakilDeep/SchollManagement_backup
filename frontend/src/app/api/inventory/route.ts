@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,38 +9,29 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const location = searchParams.get('location')
 
-    const assets = await db.asset.findMany({
-      where: {
-        status: status || undefined,
-        category: category || undefined,
-        location: location || undefined,
-        ...(search && {
-          OR: [
-            { name: { contains: search } },
-            { assetCode: { contains: search } },
-            { serialNumber: { contains: search } },
-            { description: { contains: search } },
-          ],
-        }),
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (search) queryParams.search = search
+    if (category) queryParams.category = category
+    if (status) queryParams.status = status
+    if (location) queryParams.location = location
 
-    const formattedAssets = assets.map((asset) => ({
+    const response = await fetchAPI<{ results: any[] }>('/inventory/', { query: queryParams })
+    const assets = response.results || []
+
+    const formattedAssets = assets.map((asset: any) => ({
       id: asset.id,
-      assetCode: asset.assetCode,
-      name: asset.name,
+      assetCode: asset.asset_code || asset.assetCode,
+      name: asset.name || 'Unknown',
       category: asset.category,
       description: asset.description,
-      serialNumber: asset.serialNumber,
-      purchaseDate: asset.purchaseDate ? asset.purchaseDate.toISOString().split('T')[0] : null,
-      purchasePrice: asset.purchasePrice,
-      currentValue: asset.currentValue,
+      serialNumber: asset.serial_number || asset.serialNumber,
+      purchaseDate: asset.purchase_date || asset.purchaseDate || null,
+      purchasePrice: asset.purchase_price || asset.purchasePrice,
+      currentValue: asset.current_value || asset.currentValue,
       condition: asset.condition,
       location: asset.location,
-      assignedTo: asset.assignedTo,
+      assignedTo: asset.assigned_to || asset.assignedTo,
       status: asset.status,
     }))
 
@@ -78,38 +69,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const assetCode = `AST-${Date.now().toString().slice(-6)}`
-
-    const asset = await db.asset.create({
-      data: {
-        assetCode,
+    const asset = await fetchAPI('/inventory/', {
+      method: 'POST',
+      body: JSON.stringify({
         name,
         category,
         description,
-        serialNumber,
-        purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
-        purchasePrice: purchasePrice ? parseFloat(purchasePrice) : null,
-        currentValue: currentValue ? parseFloat(currentValue) : null,
+        serial_number: serialNumber,
+        purchase_date: purchaseDate,
+        purchase_price: purchasePrice ? parseFloat(purchasePrice) : null,
+        current_value: currentValue ? parseFloat(currentValue) : null,
         condition,
         location,
-        assignedTo,
+        assigned_to: assignedTo,
         status,
-      },
+      })
     })
 
     const responseData = {
       id: asset.id,
-      assetCode: asset.assetCode,
+      assetCode: asset.asset_code || asset.assetCode,
       name: asset.name,
       category: asset.category,
       description: asset.description,
-      serialNumber: asset.serialNumber,
-      purchaseDate: asset.purchaseDate ? asset.purchaseDate.toISOString().split('T')[0] : null,
-      purchasePrice: asset.purchasePrice,
-      currentValue: asset.currentValue,
+      serialNumber: asset.serial_number || asset.serialNumber,
+      purchaseDate: asset.purchase_date || asset.purchaseDate,
+      purchasePrice: asset.purchase_price || asset.purchasePrice,
+      currentValue: asset.current_value || asset.currentValue,
       condition: asset.condition,
       location: asset.location,
-      assignedTo: asset.assignedTo,
+      assignedTo: asset.assigned_to || asset.assignedTo,
       status: asset.status,
     }
 

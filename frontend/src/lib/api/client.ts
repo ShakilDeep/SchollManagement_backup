@@ -1,6 +1,9 @@
 import type { ApiError, ApiResponse, ApiRequestOptions } from './types'
+import { transformResponse } from './transform'
 
-const BASE_URL = '/api'
+const BASE_URL = typeof window === 'undefined' 
+  ? `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api`
+  : ''
 
 class ApiErrorClass extends Error {
   constructor(
@@ -17,9 +20,12 @@ export async function fetchAPI<T>(
   endpoint: string,
   options: ApiRequestOptions = {}
 ): Promise<T> {
-  const { method = 'GET', body, query, headers = {}, ...rest } = options
+  const { method = 'GET', body, query, headers = {}, cookies, ...rest } = options
 
-  const url = new URL(`${BASE_URL}${endpoint}`, window.location.origin)
+  const isBrowser = typeof window !== 'undefined'
+  const apiUrl = isBrowser ? '/api' : BASE_URL
+
+  const url = new URL(`${apiUrl}${endpoint}`, isBrowser ? window.location.origin : BASE_URL.replace('/api', ''))
 
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
@@ -29,13 +35,21 @@ export async function fetchAPI<T>(
     })
   }
 
+  const requestHeaders: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...headers,
+  }
+
+  // Add cookies to headers for server-side requests to backend
+  if (cookies && !isBrowser) {
+    requestHeaders['Cookie'] = cookies
+  }
+
   const response = await fetch(url.toString(), {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
+    headers: requestHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    credentials: isBrowser ? 'include' : undefined,
     ...rest,
   })
 
@@ -45,7 +59,7 @@ export async function fetchAPI<T>(
 
     try {
       const errorData = await response.json()
-      errorMessage = errorData.message || errorMessage
+      errorMessage = errorData.detail || errorData.message || errorMessage
       errorDetails = errorData.details || {}
     } catch {
       throw new ApiErrorClass(errorMessage, String(response.status), errorDetails)
@@ -54,7 +68,8 @@ export async function fetchAPI<T>(
     throw new ApiErrorClass(errorMessage, String(response.status), errorDetails)
   }
 
-  return response.json()
+  const data = await response.json()
+  return transformResponse<T>(data)
 }
 
 export function isApiError(error: unknown): error is ApiError {

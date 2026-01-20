@@ -1,63 +1,21 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET() {
   try {
-    const rooms = await db.room.findMany({
-      include: {
-        hostel: true,
-        allocations: {
-          where: { status: 'Active' },
-          include: {
-            student: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                rollNumber: true,
-                grade: {
-                  select: {
-                    name: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        hostel: {
-          name: 'asc'
-        }
-      }
-    })
+    const response = await fetchAPI<{ results: any[] }>('/hostels/rooms/')
+    const rooms = response.results || []
 
-    const formattedRooms = rooms.map(room => ({
+    const formattedRooms = rooms.map((room: any) => ({
       id: room.id,
-      hostelId: room.hostelId,
-      roomNumber: room.roomNumber,
+      hostelId: room.hostel || room.hostelId,
+      roomNumber: room.room_number || room.roomNumber,
       floor: room.floor,
-      capacity: room.capacity,
-      currentOccupancy: room.allocations.length,
+      capacity: room.capacity || 0,
+      currentOccupancy: room.current_occupancy || room.currentOccupancy || 0,
       type: room.type,
-      hostel: {
-        id: room.hostel.id,
-        name: room.hostel.name,
-        type: room.hostel.type,
-      },
-      allocations: room.allocations.map(allocation => ({
-        id: allocation.id,
-        studentId: allocation.studentId,
-        student: {
-          id: allocation.student.id,
-          firstName: allocation.student.firstName,
-          lastName: allocation.student.lastName,
-          rollNumber: allocation.student.rollNumber,
-          grade: allocation.student.grade.name,
-        },
-        allocationDate: allocation.allocationDate,
-        status: allocation.status,
-      })),
+      hostel: room.hostel_details || room.hostel,
+      allocations: room.allocations || [],
     }))
 
     return NextResponse.json(formattedRooms)
@@ -82,14 +40,15 @@ export async function POST(req: Request) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    const room = await db.room.create({
-      data: {
-        hostelId,
-        roomNumber,
+    const room = await fetchAPI('/hostels/rooms/', {
+      method: 'POST',
+      body: JSON.stringify({
+        hostel: hostelId,
+        room_number: roomNumber,
         floor: parseInt(floor),
         capacity: parseInt(capacity),
         type,
-      },
+      })
     })
 
     return NextResponse.json(room, { status: 201 })

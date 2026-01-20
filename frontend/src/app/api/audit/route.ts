@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,36 +11,32 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get('endDate')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const where: any = {}
-    if (userId) where.userId = userId
-    if (action) where.action = action
-    if (entity) where.entity = entity
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      }
-    }
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (userId) queryParams.user = userId
+    if (action) queryParams.action = action
+    if (entity) queryParams.entity = entity
+    if (startDate) queryParams.start_date = startDate
+    if (endDate) queryParams.end_date = endDate
+    if (limit) queryParams.limit = limit.toString()
 
-    const logs = await db.auditLog.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: limit,
-    })
+    const response = await fetchAPI<{ results: any[] }>('/audit/', { query: queryParams })
+    const logs = response.results || []
 
-    return NextResponse.json(logs)
+    const transformedLogs = logs.map((log: any) => ({
+      id: log.id,
+      userId: log.user || log.userId,
+      action: log.action,
+      entity: log.entity,
+      entityId: log.entity_id || log.entityId,
+      details: log.details,
+      ipAddress: log.ip_address || log.ipAddress,
+      userAgent: log.user_agent || log.userAgent,
+      createdAt: log.created_at || log.createdAt,
+      user: log.user_details || log.user,
+    }))
+
+    return NextResponse.json(transformedLogs)
   } catch (error) {
     console.error('Error fetching audit logs:', error)
     return NextResponse.json({ error: 'Failed to fetch audit logs' }, { status: 500 })
@@ -56,16 +52,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const log = await db.auditLog.create({
-      data: {
-        userId,
+    const log = await fetchAPI('/audit/', {
+      method: 'POST',
+      body: JSON.stringify({
+        user: userId,
         action,
         entity,
-        entityId,
+        entity_id: entityId,
         details,
-        ipAddress,
-        userAgent,
-      },
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      })
     })
 
     return NextResponse.json(log)

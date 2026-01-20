@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { messageReplySuggestionsService } from '@/lib/ai/services/message-reply-suggestions'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,17 +20,7 @@ export async function POST(request: NextRequest) {
     let messageContext
 
     if (messageId) {
-      const dbMessage = await db.message.findUnique({
-        where: { id: messageId },
-        include: {
-          sender: {
-            select: { name: true, email: true, role: true }
-          },
-          receiver: {
-            select: { name: true, email: true, role: true }
-          }
-        }
-      })
+      const dbMessage = await fetchAPI<any>(`/messaging/${messageId}/`)
 
       if (!dbMessage) {
         return NextResponse.json(
@@ -44,15 +34,15 @@ export async function POST(request: NextRequest) {
 
       messageContext = {
         id: dbMessage.id,
-        senderId: dbMessage.senderId,
-        senderName: dbMessage.sender.name,
-        receiverId: dbMessage.receiverId,
-        receiverName: dbMessage.receiver.name,
+        senderId: dbMessage.sender || dbMessage.senderId,
+        senderName: dbMessage.sender_details?.name || dbMessage.sender?.name || 'Unknown',
+        receiverId: dbMessage.receiver || dbMessage.receiverId,
+        receiverName: dbMessage.receiver_details?.name || dbMessage.receiver?.name || 'Unknown',
         subject: dbMessage.subject || undefined,
         content: dbMessage.content,
-        type: dbMessage.type,
-        priority: dbMessage.priority,
-        createdAt: dbMessage.createdAt
+        type: dbMessage.type || 'Direct',
+        priority: dbMessage.priority || 'Normal',
+        createdAt: dbMessage.created_at || dbMessage.createdAt
       }
     } else {
       messageContext = {
@@ -116,17 +106,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const dbMessage = await db.message.findUnique({
-      where: { id: messageId },
-      include: {
-        sender: {
-          select: { name: true, email: true, role: true }
-        },
-        receiver: {
-          select: { name: true, email: true, role: true }
-        }
-      }
-    })
+    const dbMessage = await fetchAPI<any>(`/messaging/${messageId}/`)
 
     if (!dbMessage) {
       return NextResponse.json(
@@ -140,15 +120,15 @@ export async function GET(request: NextRequest) {
 
     const messageContext = {
       id: dbMessage.id,
-      senderId: dbMessage.senderId,
-      senderName: dbMessage.sender.name,
-      receiverId: dbMessage.receiverId,
-      receiverName: dbMessage.receiver.name,
+      senderId: dbMessage.sender || dbMessage.senderId,
+      senderName: dbMessage.sender_details?.name || dbMessage.sender?.name || 'Unknown',
+      receiverId: dbMessage.receiver || dbMessage.receiverId,
+      receiverName: dbMessage.receiver_details?.name || dbMessage.receiver?.name || 'Unknown',
       subject: dbMessage.subject || undefined,
       content: dbMessage.content,
-      type: dbMessage.type,
-      priority: dbMessage.priority,
-      createdAt: dbMessage.createdAt
+      type: dbMessage.type || 'Direct',
+      priority: dbMessage.priority || 'Normal',
+      createdAt: dbMessage.created_at || dbMessage.createdAt
     }
 
     const suggestions = await messageReplySuggestionsService.generateReplySuggestions(

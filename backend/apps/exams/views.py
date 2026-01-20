@@ -1,7 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Sum, Avg
@@ -11,7 +10,6 @@ from .serializers import ExamSerializer, ResultSerializer, ResultCreateSerialize
 class ExamViewSet(viewsets.ModelViewSet):
     queryset = Exam.objects.select_related('academic_year', 'grade').all()
     serializer_class = ExamSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['academic_year', 'grade', 'exam_type']
     search_fields = ['name']
@@ -28,7 +26,6 @@ class ExamViewSet(viewsets.ModelViewSet):
 class ResultViewSet(viewsets.ModelViewSet):
     queryset = Result.objects.select_related('student', 'exam').all()
     serializer_class = ResultSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['student', 'exam', 'subject']
     search_fields = ['student__first_name', 'student__last_name', 'subject']

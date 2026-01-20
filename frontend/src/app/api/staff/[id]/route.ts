@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(
   request: NextRequest,
@@ -7,89 +7,30 @@ export async function GET(
 ) {
   try {
     const { id } = params
+    const staffMember = await fetchAPI<any>(`/staff/${id}/`)
 
-    const teacher = await db.teacher.findFirst({
-      where: { id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-            name: true,
-            role: true,
-          },
-        },
-      },
+    return NextResponse.json({
+      id: staffMember.id,
+      employeeId: staffMember.employee_id || staffMember.employeeId,
+      firstName: staffMember.first_name || staffMember.firstName,
+      lastName: staffMember.last_name || staffMember.lastName,
+      name: `${staffMember.first_name || staffMember.firstName} ${staffMember.last_name || staffMember.lastName}`,
+      type: staffMember.type || 'Staff',
+      department: staffMember.department,
+      designation: staffMember.designation,
+      status: staffMember.status || 'Active',
+      phone: staffMember.phone,
+      email: staffMember.email,
+      joinDate: staffMember.join_date || staffMember.joinDate,
+      userId: staffMember.user || staffMember.userId,
+      gender: staffMember.gender,
+      dateOfBirth: staffMember.date_of_birth || staffMember.dateOfBirth,
+      qualification: staffMember.qualification,
+      specialization: staffMember.specialization,
+      experience: staffMember.experience,
+      salary: staffMember.salary,
+      address: staffMember.address,
     })
-
-    if (teacher) {
-      return NextResponse.json({
-        id: teacher.id,
-        employeeId: teacher.employeeId,
-        firstName: teacher.firstName,
-        lastName: teacher.lastName,
-        name: `${teacher.firstName} ${teacher.lastName}`,
-        type: 'Teacher' as const,
-        department: teacher.department,
-        designation: teacher.designation,
-        status: teacher.status,
-        phone: teacher.phone,
-        email: teacher.email,
-        joinDate: teacher.joinDate.toISOString().split('T')[0],
-        userId: teacher.userId,
-        gender: teacher.gender,
-        dateOfBirth: teacher.dateOfBirth.toISOString().split('T')[0],
-        qualification: teacher.qualification,
-        specialization: teacher.specialization,
-        experience: teacher.experience,
-        salary: teacher.salary,
-        address: teacher.address,
-      })
-    }
-
-    const staff = await db.staff.findFirst({
-      where: { id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-            name: true,
-            role: true,
-          },
-        },
-      },
-    })
-
-    if (staff) {
-      return NextResponse.json({
-        id: staff.id,
-        employeeId: staff.employeeId,
-        firstName: staff.firstName,
-        lastName: staff.lastName,
-        name: `${staff.firstName} ${staff.lastName}`,
-        type: 'Staff' as const,
-        department: staff.department,
-        designation: staff.designation,
-        status: staff.status,
-        phone: staff.phone,
-        email: staff.email,
-        joinDate: staff.joinDate.toISOString().split('T')[0],
-        userId: staff.userId,
-        gender: staff.gender,
-        dateOfBirth: staff.dateOfBirth.toISOString().split('T')[0],
-        qualification: staff.qualification,
-        salary: staff.salary,
-        address: staff.address,
-      })
-    }
-
-    return NextResponse.json(
-      { error: 'Staff member not found' },
-      { status: 404 }
-    )
   } catch (error) {
     console.error('Error fetching staff member:', error)
     return NextResponse.json(
@@ -120,101 +61,36 @@ export async function PUT(
       salary,
     } = body
 
-    const teacher = await db.teacher.findFirst({
-      where: { id },
+    const updated = await fetchAPI(`/staff/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        address,
+        department,
+        designation,
+        status,
+        qualification,
+        experience: experience ? parseFloat(experience) : null,
+        salary: salary ? parseFloat(salary) : null,
+      })
     })
 
-    if (teacher) {
-      const updated = await db.teacher.update({
-        where: { id },
-        data: {
-          firstName,
-          lastName,
-          email,
-          phone,
-          address,
-          department,
-          designation,
-          status,
-          qualification,
-          experience: experience ? parseFloat(experience) : null,
-          salary: salary ? parseFloat(salary) : null,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      })
-
-      return NextResponse.json({
-        id: updated.id,
-        employeeId: updated.employeeId,
-        name: `${updated.firstName} ${updated.lastName}`,
-        type: 'Teacher' as const,
-        department: updated.department,
-        designation: updated.designation,
-        status: updated.status,
-        phone: updated.phone,
-        email: updated.email,
-        joinDate: updated.joinDate.toISOString().split('T')[0],
-        userId: updated.userId,
-      })
-    }
-
-    const staff = await db.staff.findFirst({
-      where: { id },
+    return NextResponse.json({
+      id: updated.id,
+      employeeId: updated.employee_id || updated.employeeId,
+      name: `${updated.first_name || updated.firstName} ${updated.last_name || updated.lastName}`,
+      type: updated.type,
+      department: updated.department,
+      designation: updated.designation,
+      status: updated.status,
+      phone: updated.phone,
+      email: updated.email,
+      joinDate: updated.join_date || updated.joinDate,
+      userId: updated.user || updated.userId,
     })
-
-    if (staff) {
-      const updated = await db.staff.update({
-        where: { id },
-        data: {
-          firstName,
-          lastName,
-          email,
-          phone,
-          address,
-          department,
-          designation,
-          status,
-          qualification,
-          salary: salary ? parseFloat(salary) : null,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      })
-
-      return NextResponse.json({
-        id: updated.id,
-        employeeId: updated.employeeId,
-        name: `${updated.firstName} ${updated.lastName}`,
-        type: 'Staff' as const,
-        department: updated.department,
-        designation: updated.designation,
-        status: updated.status,
-        phone: updated.phone,
-        email: updated.email,
-        joinDate: updated.joinDate.toISOString().split('T')[0],
-        userId: updated.userId,
-      })
-    }
-
-    return NextResponse.json(
-      { error: 'Staff member not found' },
-      { status: 404 }
-    )
   } catch (error) {
     console.error('Error updating staff member:', error)
     return NextResponse.json(
@@ -231,48 +107,11 @@ export async function DELETE(
   try {
     const { id } = params
 
-    const teacher = await db.teacher.findFirst({
-      where: { id },
+    await fetchAPI(`/staff/${id}/`, {
+      method: 'DELETE'
     })
 
-    if (teacher) {
-      await db.teacher.delete({
-        where: { id },
-      })
-
-      if (teacher.userId) {
-        await db.user.delete({
-          where: { id: teacher.userId },
-        }).catch(() => {
-        })
-      }
-
-      return NextResponse.json({ success: true })
-    }
-
-    const staff = await db.staff.findFirst({
-      where: { id },
-    })
-
-    if (staff) {
-      await db.staff.delete({
-        where: { id },
-      })
-
-      if (staff.userId) {
-        await db.user.delete({
-          where: { id: staff.userId },
-        }).catch(() => {
-        })
-      }
-
-      return NextResponse.json({ success: true })
-    }
-
-    return NextResponse.json(
-      { error: 'Staff member not found' },
-      { status: 404 }
-    )
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting staff member:', error)
     return NextResponse.json(

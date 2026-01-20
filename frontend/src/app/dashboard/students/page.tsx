@@ -40,11 +40,12 @@ export default function StudentsPage() {
 
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
+      const name = student.name || student.fullName || `${student.firstName || ''} ${student.lastName || ''}`.trim()
       const matchesSearch =
-        student.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        student.rollNumber.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+        name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (student.rollNumber || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase())
       const matchesStatus = statusFilter === 'all' || student.status === statusFilter
-      const matchesGrade = gradeFilter === 'all' || student.grade === gradeFilter
+      const matchesGrade = gradeFilter === 'all' || student.gradeName === gradeFilter || student.grade === gradeFilter
       return matchesSearch && matchesStatus && matchesGrade
     })
   }, [students, debouncedSearchTerm, statusFilter, gradeFilter])
@@ -52,12 +53,13 @@ export default function StudentsPage() {
   const stats = useMemo(() => {
     const currentMonth = new Date().getMonth()
     const currentYear = new Date().getFullYear()
-    
+
     return {
       total: students.length,
       active: students.filter((s) => s.status === 'Active').length,
       inactive: students.filter((s) => s.status === 'Inactive').length,
       newThisMonth: students.filter((s) => {
+        if (!s.admissionDate) return false
         const admissionDate = new Date(s.admissionDate)
         return admissionDate.getMonth() === currentMonth && admissionDate.getFullYear() === currentYear
       }).length
@@ -66,17 +68,20 @@ export default function StudentsPage() {
 
   const exportStudentsToCSV = useCallback(() => {
     const headers = ['Roll Number', 'Name', 'Grade', 'Section', 'Status', 'Guardian', 'Phone', 'Email', 'Admission Date']
-    const csvData = filteredStudents.map(student => [
-      student.rollNumber,
-      student.name,
-      student.grade,
-      student.section,
-      student.status,
-      student.guardian,
-      student.phone,
-      student.email,
-      student.admissionDate
-    ])
+    const csvData = filteredStudents.map(student => {
+      const name = student.name || student.fullName || `${student.firstName || ''} ${student.lastName || ''}`.trim()
+      return [
+        student.rollNumber || '',
+        name,
+        student.gradeName || student.grade || '',
+        student.sectionName || student.section || '',
+        student.status || '',
+        '', // guardian - need to handle separately
+        student.phone || '',
+        student.email || '',
+        student.admissionDate || ''
+      ]
+    })
     
     const csvContent = [
       headers.join(','),

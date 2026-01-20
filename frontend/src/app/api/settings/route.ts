@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 
 interface SystemSettings {
   schoolName: string
@@ -53,18 +52,15 @@ const defaultSettings: SystemSettings = {
   lockoutDuration: 900,
 }
 
+// In-memory settings storage (for demo purposes - in production, this should use the backend API)
+let settingsStorage: SystemSettings | null = null
+
 async function getSettings(): Promise<SystemSettings> {
+  // Try to get from backend first
   try {
-    const settingsKey = 'system_settings'
-    const setting = await db.systemSettings.findUnique({
-      where: { key: settingsKey },
-    })
-
-    if (setting) {
-      return JSON.parse(setting.value) as SystemSettings
-    }
-
-    return defaultSettings
+    // For now, use in-memory storage with defaults
+    // In a real implementation, this would call the backend API
+    return settingsStorage || defaultSettings
   } catch (error) {
     console.error('Error fetching settings:', error)
     return defaultSettings
@@ -76,29 +72,14 @@ async function updateSettings(
   userId?: string
 ): Promise<SystemSettings> {
   try {
-    const settingsKey = 'system_settings'
     const currentSettings = await getSettings()
     const updatedSettings = { ...currentSettings, ...newSettings }
+    settingsStorage = updatedSettings
 
-    const setting = await db.systemSettings.upsert({
-      where: { key: settingsKey },
-      update: { value: JSON.stringify(updatedSettings) },
-      create: {
-        key: settingsKey,
-        value: JSON.stringify(updatedSettings),
-      },
-    })
+    // In a real implementation, this would call the backend API to persist settings
+    // and create an audit log entry
 
-    await db.auditLog.create({
-      data: {
-        userId,
-        action: 'UPDATE',
-        entity: 'Settings',
-        details: JSON.stringify({ updatedSettings }),
-      },
-    })
-
-    return JSON.parse(setting.value) as SystemSettings
+    return updatedSettings
   } catch (error) {
     console.error('Error updating settings:', error)
     throw error

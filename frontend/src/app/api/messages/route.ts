@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,48 +13,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
     }
 
-    const where: any = {}
-
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
     if (folder === 'inbox') {
-      where.receiverId = userId
+      queryParams.receiver = userId
     } else if (folder === 'sent') {
-      where.senderId = userId
+      queryParams.sender = userId
     }
+    if (priority) queryParams.priority = priority
+    if (isRead !== null) queryParams.is_read = isRead
 
-    if (priority) {
-      where.priority = priority
-    }
+    const response = await fetchAPI<{ results: any[] }>('/messaging/', { query: queryParams })
+    const messages = response.results || []
 
-    if (isRead !== null) {
-      where.isRead = isRead === 'true'
-    }
+    const transformedMessages = messages.map((msg: any) => ({
+      id: msg.id,
+      senderId: msg.sender || msg.senderId,
+      receiverId: msg.receiver || msg.receiverId,
+      subject: msg.subject,
+      content: msg.content,
+      type: msg.type || 'Direct',
+      priority: msg.priority || 'Normal',
+      isRead: msg.is_read || msg.isRead || false,
+      createdAt: msg.created_at || msg.createdAt || new Date().toISOString(),
+      sender: msg.sender_details || msg.sender,
+      receiver: msg.receiver_details || msg.receiver,
+    }))
 
-    const messages = await db.message.findMany({
-      where,
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-          },
-        },
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
-
-    return NextResponse.json(messages)
+    return NextResponse.json(transformedMessages)
   } catch (error) {
     console.error('Error fetching messages:', error)
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
@@ -75,62 +61,35 @@ export async function POST(request: NextRequest) {
 
     let actualReceiverId = receiverId
 
+    // If receiverId is an email, look up the user
     if (receiverId.includes('@')) {
-      const receiver = await db.user.findUnique({
-        where: { email: receiverId },
-        select: { id: true }
-      })
-      if (!receiver) {
-        console.error('Recipient not found:', receiverId)
-        return NextResponse.json(
-          { error: 'Recipient not found' },
-          { status: 404 }
-        )
+      try {
+        const usersResponse = await fetchAPI<{ results: any[] }>('/users/')
+        const users = usersResponse.results || []
+        const receiver = users.find((u: any) => u.email === receiverId)
+        if (!receiver) {
+          return NextResponse.json(
+            { error: 'Recipient not found' },
+            { status: 404 }
+          )
+        }
+        actualReceiverId = receiver.id
+      } catch {
+        // Continue with original receiverId if lookup fails
       }
-      actualReceiverId = receiver.id
     }
 
-    const sender = await db.user.findUnique({
-      where: { id: senderId },
-      select: { id: true }
-    })
-
-    if (!sender) {
-      console.error('Sender not found:', senderId)
-      return NextResponse.json(
-        { error: 'Sender not found' },
-        { status: 404 }
-      )
-    }
-
-    const message = await db.message.create({
-      data: {
-        senderId,
-        receiverId: actualReceiverId,
+    const message = await fetchAPI('/messaging/', {
+      method: 'POST',
+      body: JSON.stringify({
+        sender: senderId,
+        receiver: actualReceiverId,
         subject,
         content,
         type: type || 'Direct',
         priority: priority || 'Normal',
-        isRead: false,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-          },
-        },
-        receiver: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-          },
-        },
-      },
+        is_read: false,
+      })
     })
 
     return NextResponse.json(message, { status: 201 })

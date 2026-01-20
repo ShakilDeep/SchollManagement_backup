@@ -2,17 +2,37 @@ import { fetchAPI } from './client'
 
 export interface Student {
   id: string
+  user?: string | number
+  fullName: string
+  firstName: string
+  lastName: string
   rollNumber: string
-  name: string
-  grade: string
-  section: string
-  status: string
-  guardian: string
-  phone: string
+  admissionNumber: string
   admissionDate: string
-  avatar?: string
+  gender: string
+  dateOfBirth?: string
+  bloodGroup?: string
+  phone: string
   email?: string
+  emergencyContact?: string
+  emergencyPhone?: string
   address?: string
+  city?: string
+  state?: string
+  zipCode?: string
+  grade: string
+  gradeName?: string
+  section: string
+  sectionName?: string
+  academicYear?: string
+  academicYearName?: string
+  guardian?: string
+  relationship?: string
+  status: string
+  photo?: string
+  // For display purposes - derived fields
+  name: string // derived from fullName
+  guardianName?: string // derived if needed
 }
 
 export interface CreateStudentInput {
@@ -44,10 +64,11 @@ export interface UpdateStudentInput {
 }
 
 export async function getStudents(rollNumber?: string): Promise<Student[]> {
-  const response = await fetchAPI<{ data: Student[] }>('/students', {
+  const response = await fetchAPI<{ results: Student[] } | { data: Student[] }>('/students', {
     query: rollNumber ? { rollNumber } : undefined,
   })
-  return response.data || []
+  // Handle both paginated response (results) and direct data response
+  return ('results' in response ? response.results : response.data) || []
 }
 
 export async function getStudent(id: string): Promise<Student> {

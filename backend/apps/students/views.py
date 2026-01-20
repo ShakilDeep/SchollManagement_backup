@@ -1,7 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import AcademicYear, Grade, Section, Parent, Student
@@ -13,7 +12,6 @@ from .serializers import (
 class AcademicYearViewSet(viewsets.ModelViewSet):
     queryset = AcademicYear.objects.all()
     serializer_class = AcademicYearSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['is_current']
     search_fields = ['name']
@@ -23,7 +21,6 @@ class AcademicYearViewSet(viewsets.ModelViewSet):
 class GradeViewSet(viewsets.ModelViewSet):
     queryset = Grade.objects.all()
     serializer_class = GradeSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['numeric_value', 'order']
@@ -32,7 +29,6 @@ class GradeViewSet(viewsets.ModelViewSet):
 class SectionViewSet(viewsets.ModelViewSet):
     queryset = Section.objects.all()
     serializer_class = SectionSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['grade']
     search_fields = ['name']
@@ -41,15 +37,13 @@ class SectionViewSet(viewsets.ModelViewSet):
 class ParentViewSet(viewsets.ModelViewSet):
     queryset = Parent.objects.all()
     serializer_class = ParentSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['user']
     search_fields = ['first_name', 'last_name', 'phone', 'email']
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.select_related('user', 'grade', 'section', 'academic_year', 'guardian').all()
+    queryset = Student.objects.select_related('user', 'grade', 'section', 'academic_year', 'guardian').prefetch_related('attendance_set').all()
     serializer_class = StudentSerializer
-    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['grade', 'section', 'academic_year', 'status']
     search_fields = ['first_name', 'last_name', 'roll_number', 'admission_number']

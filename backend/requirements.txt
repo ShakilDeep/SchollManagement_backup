@@ -1,9 +1,36 @@
-Django==5.0.1
-djangorestframework==3.14.0
-django-cors-headers==4.3.1
-django-filter==23.5
-drf-spectacular==0.27.2
+# Django and REST Framework
+Django==5.2.10
+djangorestframework==3.16.1
+dj-rest-auth==7.0.2
+django-cors-headers==4.9.0
+django-filter==25.2
+drf-spectacular==0.29.0
+
+# Authentication & Social
+django-allauth==65.14.0
+
+# Utilities
 python-decouple==3.8
-django-allauth==0.61.1
-dj-rest-auth==5.0.2
 Pillow>=10.0.0
+python-dateutil>=2.8.2
+
+# Database (PostgreSQL optional - requires C++ build tools)
+# psycopg2-binary==2.9.9  # Uncomment if using PostgreSQL
+
+# Caching & Queue
+redis==7.1.0
+django-redis==6.0.0
+celery==5.6.2
+
+# Security & Rate Limiting
+django-ratelimit==4.1.0
+django-fernet-fields==0.6
+
+# Development & Debugging
+django-silk==5.4.3
+
+# Logging
+python-json-logger==4.0.0
+
+# HTTP client (required by allauth)
+requests>=2.32.0

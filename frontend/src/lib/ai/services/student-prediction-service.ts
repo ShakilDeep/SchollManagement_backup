@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 interface AttendanceMetrics {
   rate: number
@@ -63,13 +63,57 @@ interface StudentPredictionResult {
 
 export class StudentPredictionService {
   async analyzeAttendance(studentId: string): Promise<AttendanceMetrics> {
-    const attendances = await db.attendance.findMany({
-      where: { studentId },
-      orderBy: { date: 'desc' },
-      take: 60
-    })
+    try {
+      const response = await fetchAPI<{ results: any[] }>(`/attendance/?student=${studentId}`)
+      const attendances = response.results || []
 
-    if (attendances.length === 0) {
+      if (attendances.length === 0) {
+        return {
+          rate: 0,
+          totalDays: 0,
+          presentDays: 0,
+          absentDays: 0,
+          consecutiveAbsences: 0,
+          trend: 'stable'
+        }
+      }
+
+      const presentDays = attendances.filter((a: any) => a.status === 'Present').length
+      const absentDays = attendances.filter((a: any) => a.status === 'Absent').length
+      const rate = presentDays / attendances.length
+
+      let consecutiveAbsences = 0
+      let maxConsecutiveAbsences = 0
+      for (const attendance of [...attendances].reverse()) {
+        if (attendance.status === 'Absent') {
+          consecutiveAbsences++
+          maxConsecutiveAbsences = Math.max(maxConsecutiveAbsences, consecutiveAbsences)
+        } else {
+          consecutiveAbsences = 0
+        }
+      }
+
+      const recentAttendance = attendances.slice(0, 10)
+      const olderAttendance = attendances.slice(10, 20)
+      const recentRate = recentAttendance.filter((a: any) => a.status === 'Present').length / recentAttendance.length
+      const olderRate = olderAttendance.length > 0
+        ? olderAttendance.filter((a: any) => a.status === 'Present').length / olderAttendance.length
+        : recentRate
+
+      const trend = recentRate > olderRate + 0.05 ? 'improving'
+        : recentRate < olderRate - 0.05 ? 'declining'
+        : 'stable'
+
+      return {
+        rate,
+        totalDays: attendances.length,
+        presentDays,
+        absentDays,
+        consecutiveAbsences: maxConsecutiveAbsences,
+        trend
+      }
+    } catch (error) {
+      console.error('Error analyzing attendance:', error)
       return {
         rate: 0,
         totalDays: 0,
@@ -79,51 +123,87 @@ export class StudentPredictionService {
         trend: 'stable'
       }
     }
-
-    const presentDays = attendances.filter(a => a.status === 'Present').length
-    const absentDays = attendances.filter(a => a.status === 'Absent').length
-    const rate = presentDays / attendances.length
-
-    let consecutiveAbsences = 0
-    let maxConsecutiveAbsences = 0
-    for (const attendance of attendances.reverse()) {
-      if (attendance.status === 'Absent') {
-        consecutiveAbsences++
-        maxConsecutiveAbsences = Math.max(maxConsecutiveAbsences, consecutiveAbsences)
-      } else {
-        consecutiveAbsences = 0
-      }
-    }
-
-    const recentAttendance = attendances.slice(0, 10)
-    const olderAttendance = attendances.slice(10, 20)
-    const recentRate = recentAttendance.filter(a => a.status === 'Present').length / recentAttendance.length
-    const olderRate = olderAttendance.length > 0 
-      ? olderAttendance.filter(a => a.status === 'Present').length / olderAttendance.length
-      : recentRate
-
-    const trend = recentRate > olderRate + 0.05 ? 'improving' 
-      : recentRate < olderRate - 0.05 ? 'declining' 
-      : 'stable'
-
-    return {
-      rate,
-      totalDays: attendances.length,
-      presentDays,
-      absentDays,
-      consecutiveAbsences: maxConsecutiveAbsences,
-      trend
-    }
   }
 
   async analyzePerformance(studentId: string): Promise<ExamPerformance> {
-    const examResults = await db.examResult.findMany({
-      where: { studentId },
-      include: { examPaper: { include: { subject: true } } },
-      orderBy: { examPaper: { examDate: 'desc' } }
-    })
+    try {
+      const response = await fetchAPI<{ results: any[] }>(`/exam-results/?student=${studentId}`)
+      const examResults = response.results || []
 
-    if (examResults.length === 0) {
+      if (examResults.length === 0) {
+        return {
+          averageScore: 0,
+          averagePercentage: 0,
+          recentAverage: 0,
+          trend: 'stable',
+          consistency: 0,
+          subjectBreakdown: [],
+          failingSubjects: 0,
+          belowAverageSubjects: 0
+        }
+      }
+
+      const percentages = examResults.map((r: any) => r.percentage || 0)
+      const averagePercentage = percentages.reduce((a, b) => a + b, 0) / percentages.length
+      const averageScore = examResults.reduce((sum: number, r: any) => sum + (r.marksObtained || 0), 0) / examResults.length
+
+      const recentResults = examResults.slice(0, 5)
+      const recentAverage = recentResults.length > 0
+        ? recentResults.reduce((sum: number, r: any) => sum + (r.percentage || 0), 0) / recentResults.length
+        : averagePercentage
+
+      const olderResults = examResults.slice(5, 10)
+      const olderAverage = olderResults.length > 0
+        ? olderResults.reduce((sum: number, r: any) => sum + (r.percentage || 0), 0) / olderResults.length
+        : recentAverage
+
+      const trend = recentAverage > olderAverage + 5 ? 'improving'
+        : recentAverage < olderAverage - 5 ? 'declining'
+        : 'stable'
+
+      const variance = percentages.reduce((sum, p) => sum + Math.pow(p - averagePercentage, 2), 0) / percentages.length
+      const consistency = Math.max(0, 1 - (Math.sqrt(variance) / 100))
+
+      const subjectMap = new Map<string, number[]>()
+      examResults.forEach((result: any) => {
+        const subject = result.subjectName || result.examPaper?.subjectName || 'Unknown'
+        if (!subjectMap.has(subject)) {
+          subjectMap.set(subject, [])
+        }
+        subjectMap.get(subject)!.push(result.percentage || 0)
+      })
+
+      const subjectBreakdown = Array.from(subjectMap.entries()).map(([subject, scores]) => {
+        const avg = scores.reduce((a, b) => a + b, 0) / scores.length
+        const recentScores = scores.slice(0, 3)
+        const olderScores = scores.slice(3, 6)
+        const recentAvg = recentScores.length > 0 ? recentScores.reduce((a, b) => a + b, 0) / recentScores.length : avg
+        const olderAvg = olderScores.length > 0 ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length : recentAvg
+
+        return {
+          subject,
+          average: avg,
+          trend: recentAvg > olderAvg + 5 ? 'improving'
+            : recentAvg < olderAvg - 5 ? 'declining'
+            : 'stable'
+        }
+      })
+
+      const failingSubjects = subjectBreakdown.filter(s => s.average < 40).length
+      const belowAverageSubjects = subjectBreakdown.filter(s => s.average < 60).length
+
+      return {
+        averageScore,
+        averagePercentage,
+        recentAverage,
+        trend,
+        consistency,
+        subjectBreakdown,
+        failingSubjects,
+        belowAverageSubjects
+      }
+    } catch (error) {
+      console.error('Error analyzing performance:', error)
       return {
         averageScore: 0,
         averagePercentage: 0,
@@ -135,76 +215,71 @@ export class StudentPredictionService {
         belowAverageSubjects: 0
       }
     }
-
-    const percentages = examResults.map(r => r.percentage)
-    const averagePercentage = percentages.reduce((a, b) => a + b, 0) / percentages.length
-    const averageScore = examResults.reduce((sum, r) => sum + r.marksObtained, 0) / examResults.length
-
-    const recentResults = examResults.slice(0, 5)
-    const recentAverage = recentResults.length > 0
-      ? recentResults.reduce((sum, r) => sum + r.percentage, 0) / recentResults.length
-      : averagePercentage
-
-    const olderResults = examResults.slice(5, 10)
-    const olderAverage = olderResults.length > 0
-      ? olderResults.reduce((sum, r) => sum + r.percentage, 0) / olderResults.length
-      : recentAverage
-
-    const trend = recentAverage > olderAverage + 5 ? 'improving'
-      : recentAverage < olderAverage - 5 ? 'declining'
-      : 'stable'
-
-    const variance = percentages.reduce((sum, p) => sum + Math.pow(p - averagePercentage, 2), 0) / percentages.length
-    const consistency = Math.max(0, 1 - (Math.sqrt(variance) / 100))
-
-    const subjectMap = new Map<string, number[]>()
-    examResults.forEach(result => {
-      const subject = result.examPaper.subject.name
-      if (!subjectMap.has(subject)) {
-        subjectMap.set(subject, [])
-      }
-      subjectMap.get(subject)!.push(result.percentage)
-    })
-
-    const subjectBreakdown = Array.from(subjectMap.entries()).map(([subject, scores]) => {
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length
-      const recentScores = scores.slice(0, 3)
-      const olderScores = scores.slice(3, 6)
-      const recentAvg = recentScores.length > 0 ? recentScores.reduce((a, b) => a + b, 0) / recentScores.length : avg
-      const olderAvg = olderScores.length > 0 ? olderScores.reduce((a, b) => a + b, 0) / olderScores.length : recentAvg
-      
-      return {
-        subject,
-        average: avg,
-        trend: recentAvg > olderAvg + 5 ? 'improving'
-          : recentAvg < olderAvg - 5 ? 'declining'
-          : 'stable'
-      }
-    })
-
-    const failingSubjects = subjectBreakdown.filter(s => s.average < 40).length
-    const belowAverageSubjects = subjectBreakdown.filter(s => s.average < 60).length
-
-    return {
-      averageScore,
-      averagePercentage,
-      recentAverage,
-      trend,
-      consistency,
-      subjectBreakdown,
-      failingSubjects,
-      belowAverageSubjects
-    }
   }
 
   async analyzeBehavior(studentId: string): Promise<BehaviorAnalysis> {
-    const behaviorRecords = await db.behaviorRecord.findMany({
-      where: { studentId },
-      orderBy: { date: 'desc' },
-      take: 20
-    })
+    try {
+      const response = await fetchAPI<{ results: any[] }>(`/behavior/?student=${studentId}`)
+      const behaviorRecords = response.results || []
 
-    if (behaviorRecords.length === 0) {
+      if (behaviorRecords.length === 0) {
+        return {
+          totalPoints: 0,
+          positivePoints: 0,
+          negativePoints: 0,
+          recentBehavior: 'stable',
+          majorIncidents: 0,
+          categories: []
+        }
+      }
+
+      const positivePoints = behaviorRecords
+        .filter((r: any) => (r.points || 0) > 0)
+        .reduce((sum: number, r: any) => sum + r.points, 0)
+      const negativePoints = behaviorRecords
+        .filter((r: any) => (r.points || 0) < 0)
+        .reduce((sum: number, r: any) => sum + Math.abs(r.points), 0)
+
+      const totalPoints = positivePoints - negativePoints
+
+      const recentRecords = behaviorRecords.slice(0, 5)
+      const olderRecords = behaviorRecords.slice(5, 10)
+      const recentPoints = recentRecords.reduce((sum: number, r: any) => sum + (r.points || 0), 0)
+      const olderPoints = olderRecords.length > 0 ? olderRecords.reduce((sum: number, r: any) => sum + (r.points || 0), 0) : recentPoints
+
+      const recentBehavior = recentPoints > olderPoints + 2 ? 'improving'
+        : recentPoints < olderPoints - 2 ? 'declining'
+        : 'stable'
+
+      const majorIncidents = behaviorRecords.filter((r: any) => (r.points || 0) <= -5).length
+
+      const categoryMap = new Map<string, { count: number; points: number }>()
+      behaviorRecords.forEach((record: any) => {
+        const category = record.category || 'General'
+        if (!categoryMap.has(category)) {
+          categoryMap.set(category, { count: 0, points: 0 })
+        }
+        const cat = categoryMap.get(category)!
+        cat.count++
+        cat.points += record.points || 0
+      })
+
+      const categories = Array.from(categoryMap.entries()).map(([category, data]) => ({
+        category,
+        count: data.count,
+        points: data.points
+      }))
+
+      return {
+        totalPoints,
+        positivePoints,
+        negativePoints,
+        recentBehavior,
+        majorIncidents,
+        categories
+      }
+    } catch (error) {
+      console.error('Error analyzing behavior:', error)
       return {
         totalPoints: 0,
         positivePoints: 0,
@@ -214,51 +289,6 @@ export class StudentPredictionService {
         categories: []
       }
     }
-
-    const positivePoints = behaviorRecords
-      .filter(r => r.points > 0)
-      .reduce((sum, r) => sum + r.points, 0)
-    const negativePoints = behaviorRecords
-      .filter(r => r.points < 0)
-      .reduce((sum, r) => sum + Math.abs(r.points), 0)
-
-    const totalPoints = positivePoints - negativePoints
-
-    const recentRecords = behaviorRecords.slice(0, 5)
-    const olderRecords = behaviorRecords.slice(5, 10)
-    const recentPoints = recentRecords.reduce((sum, r) => sum + r.points, 0)
-    const olderPoints = olderRecords.length > 0 ? olderRecords.reduce((sum, r) => sum + r.points, 0) : recentPoints
-
-    const recentBehavior = recentPoints > olderPoints + 2 ? 'improving'
-      : recentPoints < olderPoints - 2 ? 'declining'
-      : 'stable'
-
-    const majorIncidents = behaviorRecords.filter(r => r.points <= -5).length
-
-    const categoryMap = new Map<string, { count: number; points: number }>()
-    behaviorRecords.forEach(record => {
-      if (!categoryMap.has(record.category)) {
-        categoryMap.set(record.category, { count: 0, points: 0 })
-      }
-      const cat = categoryMap.get(record.category)!
-      cat.count++
-      cat.points += record.points
-    })
-
-    const categories = Array.from(categoryMap.entries()).map(([category, data]) => ({
-      category,
-      count: data.count,
-      points: data.points
-    }))
-
-    return {
-      totalPoints,
-      positivePoints,
-      negativePoints,
-      recentBehavior,
-      majorIncidents,
-      categories
-    }
   }
 
   async analyzeDataQuality(
@@ -267,12 +297,43 @@ export class StudentPredictionService {
     examDataPoints: number,
     behaviorDataPoints: number
   ): Promise<DataQuality> {
-    const student = await db.student.findUnique({
-      where: { id: studentId },
-      select: { admissionDate: true }
-    })
+    try {
+      const student = await fetchAPI<any>(`/students/${studentId}/`)
 
-    if (!student) {
+      if (!student || !student.admissionDate) {
+        return {
+          attendanceDataPoints,
+          examDataPoints,
+          behaviorDataPoints,
+          timeSpanDays: 0,
+          completeness: 0,
+          consistency: 0
+        }
+      }
+
+      const admissionDate = new Date(student.admissionDate)
+      const timeSpanDays = Math.floor((Date.now() - admissionDate.getTime()) / (1000 * 60 * 60 * 24))
+      const expectedAttendanceDays = Math.max(1, timeSpanDays / 7 * 5)
+      const expectedExams = Math.max(1, timeSpanDays / 30)
+
+      const attendanceCompleteness = Math.min(1, attendanceDataPoints / expectedAttendanceDays)
+      const examCompleteness = Math.min(1, examDataPoints / expectedExams)
+      const behaviorCompleteness = Math.min(1, behaviorDataPoints / (timeSpanDays / 30))
+
+      const completeness = (attendanceCompleteness * 0.4) + (examCompleteness * 0.4) + (behaviorCompleteness * 0.2)
+
+      const consistency = Math.min(1, (attendanceDataPoints + examDataPoints) / (timeSpanDays / 10))
+
+      return {
+        attendanceDataPoints,
+        examDataPoints,
+        behaviorDataPoints,
+        timeSpanDays,
+        completeness,
+        consistency
+      }
+    } catch (error) {
+      console.error('Error analyzing data quality:', error)
       return {
         attendanceDataPoints,
         examDataPoints,
@@ -281,27 +342,6 @@ export class StudentPredictionService {
         completeness: 0,
         consistency: 0
       }
-    }
-
-    const timeSpanDays = Math.floor((Date.now() - student.admissionDate.getTime()) / (1000 * 60 * 60 * 24))
-    const expectedAttendanceDays = Math.max(1, timeSpanDays / 7 * 5)
-    const expectedExams = Math.max(1, timeSpanDays / 30)
-
-    const attendanceCompleteness = Math.min(1, attendanceDataPoints / expectedAttendanceDays)
-    const examCompleteness = Math.min(1, examDataPoints / expectedExams)
-    const behaviorCompleteness = Math.min(1, behaviorDataPoints / (timeSpanDays / 30))
-
-    const completeness = (attendanceCompleteness * 0.4) + (examCompleteness * 0.4) + (behaviorCompleteness * 0.2)
-
-    const consistency = Math.min(1, (attendanceDataPoints + examDataPoints) / (timeSpanDays / 10))
-
-    return {
-      attendanceDataPoints,
-      examDataPoints,
-      behaviorDataPoints,
-      timeSpanDays,
-      completeness,
-      consistency
     }
   }
 
@@ -384,14 +424,6 @@ export class StudentPredictionService {
       factors.push(`Below average in ${performance.belowAverageSubjects} subject(s)`)
     }
 
-    performance.subjectBreakdown.forEach(subject => {
-      if (subject.average < 40) {
-        factors.push(`Critical performance in ${subject.subject}: ${subject.average.toFixed(1)}%`)
-      } else if (subject.average < 60 && subject.trend === 'declining') {
-        factors.push(`Declining performance in ${subject.subject}`)
-      }
-    })
-
     if (behavior.totalPoints < -10) {
       factors.push(`Significant behavior concerns: ${behavior.totalPoints} points`)
     } else if (behavior.totalPoints < 0) {
@@ -419,7 +451,7 @@ export class StudentPredictionService {
     if (attendance.rate < 0.75) {
       return 'D'
     } else if (attendance.rate < 0.85) {
-      return Math.max('D', weightedScore < 50 ? 'D' : weightedScore < 60 ? 'C' : weightedScore < 75 ? 'B' : 'A')
+      return weightedScore < 50 ? 'D' : weightedScore < 60 ? 'C' : weightedScore < 75 ? 'B' : 'A'
     }
 
     if (weightedScore >= 80) return 'A'
@@ -470,11 +502,7 @@ export class StudentPredictionService {
     }
 
     if (performance.failingSubjects >= 1) {
-      const failingSubjects = performance.subjectBreakdown
-        .filter(s => s.average < 40)
-        .map(s => s.subject)
-        .join(', ')
-      recommendations.push(`Targeted intervention needed for: ${failingSubjects}`)
+      recommendations.push('Targeted intervention needed for failing subjects')
     }
 
     if (performance.trend === 'declining') {

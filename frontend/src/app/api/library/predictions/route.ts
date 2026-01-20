@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { LibraryPredictionService } from '@/lib/ai/services/library-predictions'
 import { LibraryPrediction } from '@/lib/ai/types'
+import { fetchAPI } from '@/lib/api/client'
 
 function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPrediction {
   const totalBooks = books.length
-  const totalCopies = books.reduce((sum, b) => sum + b.totalCopies, 0)
-  const availableCopies = books.reduce((sum, b) => sum + b.availableCopies, 0)
+  const totalCopies = books.reduce((sum, b) => sum + (b.totalCopies || b.total_copies || 1), 0)
+  const availableCopies = books.reduce((sum, b) => sum + (b.availableCopies || b.available_copies || 0), 0)
   const borrowedCopies = totalCopies - availableCopies
-  const overdueCount = borrowals.filter(b => b.status === 'Overdue').length
+  const overdueCount = borrowals.filter(b => b.status === 'Overdue' || b.status === 'overdue').length
 
-  const healthScore = availableCopies / totalCopies
+  const healthScore = totalCopies > 0 ? availableCopies / totalCopies : 0
   let healthStatus: 'excellent' | 'good' | 'fair' | 'poor' = 'good'
   if (healthScore > 0.8) healthStatus = 'excellent'
   else if (healthScore > 0.6) healthStatus = 'good'
@@ -19,16 +19,20 @@ function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPre
 
   const categoryStats: Record<string, any> = {}
   books.forEach(book => {
-    if (!categoryStats[book.category]) {
-      categoryStats[book.category] = { totalBooks: 0, borrowCount: 0 }
+    const category = book.category || book.categoryName || 'General'
+    if (!categoryStats[category]) {
+      categoryStats[category] = { totalBooks: 0, borrowCount: 0 }
     }
-    categoryStats[book.category].totalBooks++
+    categoryStats[category].totalBooks++
   })
 
   borrowals.forEach(borrowal => {
-    const book = books.find(b => b.id === borrowal.bookId)
-    if (book && categoryStats[book.category]) {
-      categoryStats[book.category].borrowCount++
+    const book = books.find(b => b.id === (borrowal.bookId || borrowal.book || borrowal.book_id))
+    if (book) {
+      const category = book.category || book.categoryName || 'General'
+      if (categoryStats[category]) {
+        categoryStats[category].borrowCount++
+      }
     }
   })
 
@@ -44,27 +48,27 @@ function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPre
     }))
 
   const outOfStockBooks = books
-    .filter(b => b.availableCopies === 0)
+    .filter(b => (b.availableCopies || b.available_copies || 0) === 0)
     .slice(0, 5)
     .map(book => ({
       isbn: book.isbn,
       title: book.title,
       author: book.author,
-      category: book.category,
-      totalCopies: book.totalCopies,
+      category: book.category || book.categoryName || 'General',
+      totalCopies: book.totalCopies || book.total_copies || 1,
       recommendation: `Reorder immediately - high demand`,
       urgency: 'high' as const
     }))
 
   const lowStockBooks = books
-    .filter(b => b.availableCopies > 0 && b.availableCopies < 2)
+    .filter(b => (b.availableCopies || b.available_copies || 0) > 0 && (b.availableCopies || b.available_copies || 0) < 2)
     .slice(0, 5)
     .map(book => ({
       isbn: book.isbn,
       title: book.title,
       author: book.author,
-      category: book.category,
-      availableCopies: book.availableCopies,
+      category: book.category || book.categoryName || 'General',
+      availableCopies: book.availableCopies || book.available_copies || 0,
       recommendedReorder: 3
     }))
 
@@ -107,15 +111,20 @@ function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPre
       averageBookAge: 3
     },
     popularBooks: {
-      trendingBooks: books.slice(0, 5).map(book => ({
-        isbn: book.isbn,
-        title: book.title,
-        author: book.author,
-        category: book.category,
-        borrowCount: borrowals.filter(b => b.bookId === book.id).length,
-        availableCopies: book.availableCopies,
-        recommendation: 'High demand title'
-      })),
+      trendingBooks: books.slice(0, 5).map(book => {
+        const borrowCount = borrowals.filter(b =>
+          (b.bookId || b.book || b.book_id) === book.id
+        ).length
+        return {
+          isbn: book.isbn,
+          title: book.title,
+          author: book.author,
+          category: book.category || book.categoryName || 'General',
+          borrowCount,
+          availableCopies: book.availableCopies || book.available_copies || 0,
+          recommendation: 'High demand title'
+        }
+      }),
       highDemandCategories: topCategories.map(cat => ({
         category: cat.category,
         borrowCount: categoryStats[cat.category].borrowCount,
@@ -140,17 +149,18 @@ function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPre
       averageReturnDelay: 2,
       frequentBorrowers: borrowals
         .reduce((acc: any[], b) => {
-          const existing = acc.find(x => x.studentId === b.studentId)
+          const studentId = b.studentId || b.student || b.student_id
+          const existing = acc.find(x => x.studentId === studentId)
           if (existing) {
             existing.borrowCount++
-            if (b.status === 'Overdue') existing.overdueCount++
+            if (b.status === 'Overdue' || b.status === 'overdue') existing.overdueCount++
           } else {
             acc.push({
-              studentId: b.studentId,
-              studentName: borrowals.find(x => x.studentId === b.studentId)?.student?.firstName + ' ' + borrowals.find(x => x.studentId === b.studentId)?.student?.lastName || 'Unknown',
-              rollNumber: borrowals.find(x => x.studentId === b.studentId)?.student?.rollNumber || 'Unknown',
+              studentId,
+              studentName: b.studentName || b.student_details?.name || 'Unknown',
+              rollNumber: b.rollNumber || b.student_details?.rollNumber || 'Unknown',
               borrowCount: 1,
-              overdueCount: b.status === 'Overdue' ? 1 : 0
+              overdueCount: (b.status === 'Overdue' || b.status === 'overdue') ? 1 : 0
             })
           }
           return acc
@@ -241,28 +251,23 @@ function generateFallbackPredictions(books: any[], borrowals: any[]): LibraryPre
 
 export async function GET() {
   try {
-    const [books, borrowals] = await Promise.all([
-      db.book.findMany({
-        orderBy: {
-          title: 'asc',
-        },
-      }),
-      db.libraryBorrowal.findMany({
-        where: {
-          borrowDate: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-          }
-        },
-        include: {
-          student: true,
-          book: true
-        },
-        orderBy: {
-          borrowDate: 'desc'
-        },
-        take: 100
-      })
+    // Fetch data from Django backend API
+    const [booksResponse, borrowalsResponse] = await Promise.all([
+      fetchAPI<{ results: any[] }>('/library/books/'),
+      fetchAPI<{ results: any[] }>('/library/borrowals/')
     ])
+
+    const books = booksResponse.results || []
+    const borrowals = borrowalsResponse.results || []
+
+    // Filter recent borrowals (last 30 days)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    const recentBorrowals = borrowals.filter(b => {
+      const borrowDate = new Date(b.borrowDate || b.borrow_date || b.created_at || b.createdAt)
+      return borrowDate >= thirtyDaysAgo
+    })
 
     const libraryData = {
       books: books.map(book => ({
@@ -270,30 +275,32 @@ export async function GET() {
         isbn: book.isbn,
         title: book.title,
         author: book.author,
-        category: book.category,
-        totalCopies: book.totalCopies,
-        availableCopies: book.availableCopies,
+        category: book.category || book.category_name || 'General',
+        totalCopies: book.totalCopies || book.total_copies || 1,
+        availableCopies: book.availableCopies || book.available_copies || 0,
         location: book.location || 'Unknown',
         publisher: book.publisher,
-        publicationYear: book.publicationYear,
-        createdAt: new Date().toISOString()
+        publicationYear: book.publicationYear || book.publication_year,
+        createdAt: book.created_at || book.createdAt || new Date().toISOString()
       })),
-      borrowals: borrowals.map(borrowal => ({
+      borrowals: recentBorrowals.map(borrowal => ({
         id: borrowal.id,
-        bookId: borrowal.bookId,
-        studentId: borrowal.studentId,
-        borrowDate: borrowal.borrowDate.toISOString(),
-        dueDate: borrowal.dueDate.toISOString(),
-        returnDate: borrowal.returnDate?.toISOString(),
-        status: borrowal.status as 'Borrowed' | 'Returned' | 'Overdue',
-        fine: borrowal.fine
+        bookId: borrowal.book || borrowal.bookId || borrowal.book_id,
+        studentId: borrowal.student || borrowal.studentId || borrowal.student_id,
+        borrowDate: borrowal.borrowDate || borrowal.borrow_date || borrowal.created_at,
+        dueDate: borrowal.dueDate || borrowal.due_date,
+        returnDate: borrowal.returnDate || borrowal.return_date,
+        status: borrowal.status || 'Borrowed',
+        fine: borrowal.fine || 0,
+        studentName: borrowal.student_details?.name || borrowal.studentName || 'Unknown',
+        rollNumber: borrowal.student_details?.roll_number || borrowal.rollNumber || 'Unknown'
       }))
     }
 
     const predictionService = new LibraryPredictionService()
     const predictions = await predictionService.predictLibrary(libraryData)
 
-    const fallbackPredictions = generateFallbackPredictions(books, borrowals)
+    const fallbackPredictions = generateFallbackPredictions(libraryData.books, libraryData.borrowals)
 
     const safePredictions = {
       ...fallbackPredictions,
@@ -355,32 +362,40 @@ export async function GET() {
     if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
       console.log('[PREDICTIONS_GET] Using fallback predictions due to API quota limit')
 
-      const [books, borrowals] = await Promise.all([
-        db.book.findMany({
-          orderBy: {
-            title: 'asc',
-          },
-        }),
-        db.libraryBorrowal.findMany({
-          where: {
-            borrowDate: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-            }
-          },
-          include: {
-            student: true,
-            book: true
-          },
-          orderBy: {
-            borrowDate: 'desc'
-          },
-          take: 100
-        })
-      ])
+      // Try to fetch basic data from backend for fallback
+      try {
+        const [booksResponse, borrowalsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/library/books/'),
+          fetchAPI<{ results: any[] }>('/library/borrowals/')
+        ])
 
-      const fallbackPredictions = generateFallbackPredictions(books, borrowals)
+        const books = (booksResponse.results || []).map(book => ({
+          id: book.id,
+          isbn: book.isbn,
+          title: book.title,
+          author: book.author,
+          category: book.category || book.category_name || 'General',
+          totalCopies: book.totalCopies || book.total_copies || 1,
+          availableCopies: book.availableCopies || book.available_copies || 0
+        }))
 
-      return NextResponse.json(fallbackPredictions)
+        const borrowals = (borrowalsResponse.results || []).map(b => ({
+          id: b.id,
+          bookId: b.book || b.bookId || b.book_id,
+          studentId: b.student || b.studentId || b.student_id,
+          studentName: b.student_details?.name || b.studentName || 'Unknown',
+          rollNumber: b.student_details?.roll_number || b.rollNumber || 'Unknown',
+          status: b.status || 'Borrowed'
+        }))
+
+        const fallbackPredictions = generateFallbackPredictions(books, borrowals)
+
+        return NextResponse.json(fallbackPredictions)
+      } catch (fallbackError) {
+        console.error('[PREDICTIONS_GET] Fallback also failed:', fallbackError)
+        // Return minimal fallback without any data
+        return NextResponse.json(generateFallbackPredictions([], []))
+      }
     }
 
     return new NextResponse(JSON.stringify({ error: 'Internal Error', details: errorMessage }), {

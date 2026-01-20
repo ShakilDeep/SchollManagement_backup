@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { inventoryPredictionService } from '@/lib/ai/services/inventory-prediction-service'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,17 +40,13 @@ export async function GET(request: NextRequest) {
 }
 
 async function handleBatchPrediction(category: string | null) {
-  const whereClause: any = {}
+  const queryParams: Record<string, string> = {}
+  if (category) queryParams.category = category
 
-  if (category) whereClause.category = category
+  const response = await fetchAPI<{ results: any[] }>('/inventory/', { query: queryParams })
+  const assets = response.results || []
 
-  const assets = await db.asset.findMany({
-    where: whereClause,
-    select: { id: true },
-    take: 50
-  })
-
-  const assetIds = assets.map(a => a.id)
+  const assetIds = assets.map((a: any) => a.id).slice(0, 50)
   const batchPrediction = await inventoryPredictionService.predictBatchInventory(assetIds)
 
   return NextResponse.json({

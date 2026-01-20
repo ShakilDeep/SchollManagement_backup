@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,86 +9,33 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get('department')
     const status = searchParams.get('status')
 
-    const teachers = await db.teacher.findMany({
-      where: {
-        status: status || undefined,
-        ...(search && {
-          OR: [
-            { firstName: { contains: search } },
-            { lastName: { contains: search } },
-            { employeeId: { contains: search } },
-            { email: { contains: search } },
-            { user: { email: { contains: search } } },
-          ],
-        }),
-        ...(department && { department: { contains: department } }),
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-          },
-        },
-      },
-    })
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (search) queryParams.search = search
+    if (type) queryParams.type = type
+    if (department) queryParams.department = department
+    if (status) queryParams.status = status
 
-    const staff = await db.staff.findMany({
-      where: {
-        status: status || undefined,
-        ...(search && {
-          OR: [
-            { firstName: { contains: search } },
-            { lastName: { contains: search } },
-            { employeeId: { contains: search } },
-            { email: { contains: search } },
-            { user: { email: { contains: search } } },
-          ],
-        }),
-        ...(department && { department: { contains: department } }),
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-          },
-        },
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/staff/', { query: queryParams })
+    const staffMembers = response.results || []
 
-    const combinedStaff = [
-      ...teachers.map((teacher) => ({
-        id: teacher.id,
-        employeeId: teacher.employeeId,
-        name: `${teacher.firstName} ${teacher.lastName}`,
-        type: 'Teacher' as const,
-        department: teacher.department,
-        designation: teacher.designation,
-        status: teacher.status,
-        phone: teacher.phone,
-        email: teacher.email,
-        joinDate: teacher.joinDate.toISOString().split('T')[0],
-        userId: teacher.userId,
-      })),
-      ...staff.map((s) => ({
-        id: s.id,
-        employeeId: s.employeeId,
-        name: `${s.firstName} ${s.lastName}`,
-        type: 'Staff' as const,
-        department: s.department,
-        designation: s.designation,
-        status: s.status,
-        phone: s.phone,
-        email: s.email,
-        joinDate: s.joinDate.toISOString().split('T')[0],
-        userId: s.userId,
-      })),
-    ]
+    const transformedStaff = staffMembers.map((s: any) => ({
+      id: s.id,
+      employeeId: s.employee_id || s.employeeId || '',
+      name: `${s.first_name || s.firstName || ''} ${s.last_name || s.lastName || ''}`.trim() || 'Unknown',
+      type: s.type || 'Staff',
+      department: s.department,
+      designation: s.designation,
+      status: s.status || 'Active',
+      phone: s.phone,
+      email: s.email,
+      joinDate: s.join_date || s.joinDate || new Date().toISOString().split('T')[0],
+      userId: s.user || s.userId,
+      firstName: s.first_name || s.firstName,
+      lastName: s.last_name || s.lastName,
+    }))
 
-    const filtered = type ? combinedStaff.filter((s) => s.type === type) : combinedStaff
+    const filtered = type ? transformedStaff.filter((s) => s.type === type) : transformedStaff
 
     return NextResponse.json(filtered)
   } catch (error) {
@@ -126,94 +73,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const employeeId = `EMP-${Date.now().toString().slice(-6)}`
-
-    const user = await db.user.create({
-      data: {
+    const staffMember = await fetchAPI('/staff/', {
+      method: 'POST',
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
         email,
-        password: null,
-        name: `${firstName} ${lastName}`,
-        role: type === 'Teacher' ? 'TEACHER' : 'STAFF',
         phone,
+        type,
+        department,
+        designation,
+        gender,
+        date_of_birth: dateOfBirth,
+        qualification,
         address,
-      },
+        experience: experience ? parseFloat(experience) : null,
+        salary: salary ? parseFloat(salary) : null,
+      })
     })
 
-    let result
-
-    if (type === 'Teacher') {
-      result = await db.teacher.create({
-        data: {
-          userId: user.id,
-          employeeId,
-          firstName,
-          lastName,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          phone,
-          email,
-          address,
-          department,
-          designation,
-          qualification,
-          experience: experience ? parseFloat(experience) : null,
-          salary: salary ? parseFloat(salary) : null,
-          joinDate: new Date(),
-          status: 'Active',
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      })
-    } else {
-      result = await db.staff.create({
-        data: {
-          userId: user.id,
-          employeeId,
-          firstName,
-          lastName,
-          gender,
-          dateOfBirth: new Date(dateOfBirth),
-          phone,
-          email,
-          address,
-          department,
-          designation,
-          qualification,
-          salary: salary ? parseFloat(salary) : null,
-          joinDate: new Date(),
-          status: 'Active',
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      })
-    }
-
     const responseData = {
-      id: result.id,
-      employeeId: result.employeeId,
-      name: `${result.firstName} ${result.lastName}`,
-      type: type as 'Teacher' | 'Staff',
-      department: result.department,
-      designation: result.designation,
-      status: result.status,
-      phone: result.phone,
-      email: result.email,
-      joinDate: result.joinDate.toISOString().split('T')[0],
-      userId: result.userId,
+      id: staffMember.id,
+      employeeId: staffMember.employee_id || staffMember.employeeId,
+      name: `${staffMember.first_name || staffMember.firstName} ${staffMember.last_name || staffMember.lastName}`,
+      type: staffMember.type || type,
+      department: staffMember.department,
+      designation: staffMember.designation,
+      status: staffMember.status,
+      phone: staffMember.phone,
+      email: staffMember.email,
+      joinDate: staffMember.join_date || staffMember.joinDate,
+      userId: staffMember.user || staffMember.userId,
     }
 
     return NextResponse.json(responseData, { status: 201 })

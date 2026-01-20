@@ -26,4 +26,6 @@ export interface ApiRequestOptions extends RequestInit {
   method?: HttpMethod
   body?: unknown
   query?: Record<string, string | number | boolean | undefined>
+  skipAuth?: boolean
+  cookies?: string
 }

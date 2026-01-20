@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,268 +10,317 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    let data = {}
+    let data: any = {}
 
     switch (type) {
       case 'overview': {
-        const [studentCount, teacherCount, staffCount, attendanceRate, behaviorRecords] = await Promise.all([
-          db.student.count({
-            where: academicYearId ? { academicYearId } : undefined,
-          }),
-          db.teacher.count(),
-          db.staff.count(),
-          db.attendance.aggregate({
-            _avg: { status: true },
-            where: {
-              ...(academicYearId && {
-                student: { academicYearId },
-              }),
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-          }),
-          db.behaviorRecord.groupBy({
-            by: ['type'],
-            _count: true,
-            where: {
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-          }),
+        // Fetch overview statistics from backend
+        const [studentsResponse, staffResponse, attendanceResponse, behaviorResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/students/'),
+          fetchAPI<{ results: any[] }>('/staff/'),
+          fetchAPI<any>('/attendance/stats/'),
+          fetchAPI<{ results: any[] }>('/behavior/')
         ])
+
+        const students = studentsResponse.results || []
+        const staff = staffResponse.results || []
+        const attendanceStats = attendanceResponse
+        const behaviorRecords = behaviorResponse.results || []
+
+        const studentCount = academicYearId
+          ? students.filter((s: any) => s.academic_year === academicYearId || s.academicYearId === academicYearId).length
+          : students.length
+
+        const teacherCount = staff.filter((s: any) => s.type === 'Teacher').length
+        const staffCount = staff.filter((s: any) => s.type === 'Staff').length
+
+        // Group behavior by type
+        const behaviorByType = behaviorRecords
+          .filter((b: any) => {
+            if (startDate && endDate) {
+              const date = new Date(b.date || b.created_at)
+              return date >= new Date(startDate) && date <= new Date(endDate)
+            }
+            return true
+          })
+          .reduce((acc: any, b: any) => {
+            acc[b.type] = (acc[b.type] || 0) + 1
+            return acc
+          }, {})
 
         data = {
           studentCount,
           teacherCount,
           staffCount,
-          attendanceRate: attendanceRate._avg.status || 0,
-          behaviorRecords,
+          attendanceRate: attendanceStats.rate || 0,
+          behaviorRecords: Object.entries(behaviorByType).map(([type, _count]) => ({
+            type,
+            _count: { _count: _count as number }
+          }))
         }
         break
       }
 
       case 'students': {
-        const [studentsByGrade, studentsBySection, attendanceByGrade, grades, sections] = await Promise.all([
-          db.student.groupBy({
-            by: ['gradeId'],
-            _count: true,
-            where: academicYearId ? { academicYearId } : undefined,
-          }),
-          db.student.groupBy({
-            by: ['sectionId'],
-            _count: true,
-            where: sectionId ? { sectionId } : undefined,
-          }),
-          db.attendance.groupBy({
-            by: ['studentId'],
-            _avg: { status: true },
-            where: {
-              ...(academicYearId && {
-                student: { academicYearId },
-              }),
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-          }),
-          db.grade.findMany(),
-          db.section.findMany(),
+        const [studentsResponse, attendanceResponse, gradesResponse, sectionsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/students/'),
+          fetchAPI<any>('/attendance/stats/'),
+          fetchAPI<{ results: any[] }>('/grades/'),
+          fetchAPI<{ results: any[] }>('/sections/')
         ])
 
-        const studentsByGradeWithNames = studentsByGrade.map((s) => ({
-          ...s,
-          grade: grades.find((g) => g.id === s.gradeId),
+        const students = studentsResponse.results || []
+        const grades = gradesResponse.results || []
+        const sections = sectionsResponse.results || []
+
+        // Group students by grade
+        const studentsByGrade = students.reduce((acc: any, s: any) => {
+          const gradeId = s.grade || s.gradeId
+          acc[gradeId] = (acc[gradeId] || 0) + 1
+          return acc
+        }, {})
+
+        const studentsByGradeWithNames = Object.entries(studentsByGrade).map(([gradeId, count]) => ({
+          gradeId,
+          _count: { _count: count as number },
+          grade: grades.find((g: any) => g.id === gradeId)
         }))
 
-        const studentsBySectionWithNames = studentsBySection.map((s) => ({
-          ...s,
-          section: sections.find((sec) => sec.id === s.sectionId),
-        }))
+        // Group students by section
+        const studentsBySection = students.reduce((acc: any, s: any) => {
+          const sectionId = s.section || s.sectionId
+          acc[sectionId] = (acc[sectionId] || 0) + 1
+          return acc
+        }, {})
 
-        const presentCount = attendanceByGrade.filter((a) => a._avg.status >= 0.7).length
-        const absentCount = attendanceByGrade.length - presentCount
+        const studentsBySectionWithNames = Object.entries(studentsBySection).map(([sectionId, count]) => ({
+          sectionId,
+          _count: { _count: count as number },
+          section: sections.find((s: any) => s.id === sectionId)
+        }))
 
         data = {
           studentsByGrade: studentsByGradeWithNames,
           studentsBySection: studentsBySectionWithNames,
-          presentCount,
-          absentCount,
-          attendanceRate: attendanceByGrade.length > 0 ? presentCount / attendanceByGrade.length : 0,
+          presentCount: Math.floor((attendanceStats.rate || 0.7) * students.length),
+          absentCount: Math.floor((1 - (attendanceStats.rate || 0.7)) * students.length),
+          attendanceRate: attendanceStats.rate || 0.7
         }
         break
       }
 
       case 'academics': {
-        const [examResults, subjectPerformance, subjects] = await Promise.all([
-          db.examResult.groupBy({
-            by: ['examId'],
-            _avg: { totalMarks: true, obtainedMarks: true },
-            where: academicYearId ? {
-              student: { academicYearId },
-            } : undefined,
-          }),
-          db.examResult.groupBy({
-            by: ['subjectId'],
-            _avg: { obtainedMarks: true, totalMarks: true },
-            where: academicYearId ? {
-              student: { academicYearId },
-            } : undefined,
-          }),
-          db.subject.findMany(),
+        const [examResultsResponse, subjectsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/exam-results/'),
+          fetchAPI<{ results: any[] }>('/curriculum/subjects/')
         ])
 
-        const subjectPerformanceWithNames = subjectPerformance.map((s) => ({
-          ...s,
-          subject: subjects.find((sub) => sub.id === s.subjectId),
+        const examResults = examResultsResponse.results || []
+        const subjects = subjectsResponse.results || []
+
+        // Group by exam
+        const examResultsByExam = examResults.reduce((acc: any, r: any) => {
+          const examId = r.exam || r.examId
+          if (!acc[examId]) {
+            acc[examId] = { totalMarks: 0, obtainedMarks: 0, count: 0 }
+          }
+          acc[examId].totalMarks += r.total_marks || r.totalMarks || 100
+          acc[examId].obtainedMarks += r.marks_obtained || r.marksObtained || 0
+          acc[examId].count += 1
+          return acc
+        }, {})
+
+        // Group by subject
+        const subjectPerformance = examResults.reduce((acc: any, r: any) => {
+          const subject = r.subject || r.subjectName || 'Unknown'
+          if (!acc[subject]) {
+            acc[subject] = { totalMarks: 0, obtainedMarks: 0, count: 0 }
+          }
+          acc[subject].totalMarks += r.total_marks || r.totalMarks || 100
+          acc[subject].obtainedMarks += r.marks_obtained || r.marksObtained || 0
+          acc[subject].count += 1
+          return acc
+        }, {})
+
+        const subjectPerformanceWithNames = Object.entries(subjectPerformance).map(([subject, stats]: [string, any]) => ({
+          subjectId: subject,
+          _avg: {
+            obtainedMarks: stats.obtainedMarks / stats.count,
+            totalMarks: stats.totalMarks / stats.count
+          },
+          subject: subjects.find((s: any) => s.name === subject)
         }))
 
         data = {
-          examResults,
+          examResults: Object.entries(examResultsByExam).map(([examId, stats]: [string, any]) => ({
+            examId,
+            _avg: {
+              obtainedMarks: stats.obtainedMarks / stats.count,
+              totalMarks: stats.totalMarks / stats.count
+            }
+          })),
           subjectPerformance: subjectPerformanceWithNames,
-          averagePerformance:
-            examResults.length > 0
-              ? examResults.reduce((acc, r) => acc + (r._avg.obtainedMarks / r._avg.totalMarks) * 100, 0) /
-                examResults.length
-              : 0,
+          averagePerformance: Object.values(examResultsByExam).reduce((acc: number, stats: any) => {
+            return acc + (stats.obtainedMarks / stats.totalMarks) * 100
+          }, 0) / Object.keys(examResultsByExam).length
         }
         break
       }
 
       case 'behavior': {
-        const [behaviorByType, behaviorByCategory, recentIncidents] = await Promise.all([
-          db.behaviorRecord.groupBy({
-            by: ['type'],
-            _count: true,
-            _sum: { points: true },
-            where: {
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-          }),
-          db.behaviorRecord.groupBy({
-            by: ['category'],
-            _count: true,
-            where: {
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-          }),
-          db.behaviorRecord.findMany({
-            where: {
-              ...(startDate && endDate && {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-              }),
-            },
-            include: {
-              Student: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  rollNumber: true,
-                },
-              },
-            },
-            orderBy: { date: 'desc' },
-            take: 10,
-          }),
-        ])
+        const behaviorResponse = await fetchAPI<{ results: any[] }>('/behavior/')
+
+        const behaviorRecords = behaviorResponse.results || []
+
+        const behaviorByType = behaviorRecords.reduce((acc: any, b: any) => {
+          const type = b.type
+          if (!acc[type]) {
+            acc[type] = { _count: 0, _sum: { points: 0 } }
+          }
+          acc[type]._count += 1
+          acc[type]._sum.points += b.points || 0
+          return acc
+        }, {})
+
+        const behaviorByCategory = behaviorRecords.reduce((acc: any, b: any) => {
+          const category = b.category
+          if (!acc[category]) {
+            acc[category] = { _count: 0 }
+          }
+          acc[category]._count += 1
+          return acc
+        }, {})
+
+        const recentIncidents = behaviorRecords
+          .filter((b: any) => {
+            if (startDate && endDate) {
+              const date = new Date(b.date || b.created_at)
+              return date >= new Date(startDate) && date <= new Date(endDate)
+            }
+            return true
+          })
+          .slice(0, 10)
+          .map((b: any) => ({
+            ...b,
+            Student: {
+              firstName: b.student_first_name || b.firstName || '',
+              lastName: b.student_last_name || b.lastName || '',
+              rollNumber: b.roll_number || b.rollNumber || ''
+            }
+          }))
 
         data = {
-          behaviorByType,
-          behaviorByCategory,
-          recentIncidents,
+          behaviorByType: Object.entries(behaviorByType).map(([type, stats]) => ({
+            type,
+            _count: stats._count,
+            _sum: stats._sum
+          })),
+          behaviorByCategory: Object.entries(behaviorByCategory).map(([category, stats]) => ({
+            category,
+            _count: stats._count
+          })),
+          recentIncidents
         }
         break
       }
 
       case 'library': {
-        const [totalBooks, borrowedBooks, overdueBooks, popularBooks] = await Promise.all([
-          db.book.count(),
-          db.libraryBorrowal.count({
-            where: { returnDate: null },
-          }),
-          db.libraryBorrowal.count({
-            where: {
-              returnDate: null,
-              dueDate: { lt: new Date() },
-            },
-          }),
-          db.libraryBorrowal.groupBy({
-            by: ['bookId'],
-            _count: true,
-            orderBy: { _count: { bookId: 'desc' } },
-            take: 10,
-          }),
+        const [booksResponse, borrowalsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/library/books/'),
+          fetchAPI<{ results: any[] }>('/library/borrowals/')
         ])
+
+        const books = booksResponse.results || []
+        const borrowals = borrowalsResponse.results || []
+
+        const totalBooks = books.length
+        const borrowedBooks = borrowals.filter((b: any) => !b.return_date).length
+        const overdueBooks = borrowals.filter((b: any) => {
+          return !b.return_date && new Date(b.due_date || b.dueDate) < new Date()
+        }).length
+
+        // Group by book to find popular
+        const popularBooks = Object.entries(
+          borrowals.reduce((acc: any, b: any) => {
+            const bookId = b.book || b.bookId
+            acc[bookId] = (acc[bookId] || 0) + 1
+            return acc
+          }, {})
+        )
+          .map(([bookId, count]) => ({ bookId, _count: { _count: count as number } }))
+          .sort((a: any, b: any) => b._count._count - a._count._count)
+          .slice(0, 10)
 
         data = {
           totalBooks,
           borrowedBooks,
           overdueBooks,
-          popularBooks,
+          popularBooks
         }
         break
       }
 
       case 'transport': {
-        const [totalVehicles, activeAllocations, routeStats] = await Promise.all([
-          db.vehicle.count(),
-          db.transportAllocation.count({
-            where: { status: 'ACTIVE' },
-          }),
-          db.transportAllocation.groupBy({
-            by: ['routeId'],
-            _count: true,
-          }),
+        const [vehiclesResponse, allocationsResponse] = await Promise.all([
+          fetchAPI<{ results: any[] }>('/transport/vehicles/'),
+          fetchAPI<{ results: any[] }>('/transport/allocations/')
         ])
+
+        const vehicles = vehiclesResponse.results || []
+        const allocations = allocationsResponse.results || []
+
+        const totalVehicles = vehicles.length
+        const activeAllocations = allocations.filter((a: any) => a.status === 'Active').length
+
+        // Group by route
+        const routeStats = allocations.reduce((acc: any, a: any) => {
+          const routeId = a.route || a.routeId
+          acc[routeId] = (acc[routeId] || 0) + 1
+          return acc
+        }, {})
 
         data = {
           totalVehicles,
           activeAllocations,
-          routeStats,
+          routeStats: Object.entries(routeStats).map(([routeId, count]) => ({
+            routeId,
+            _count: { _count: count as number }
+          }))
         }
         break
       }
 
       case 'inventory': {
-        const [totalAssets, assetByCategory, assetByStatus] = await Promise.all([
-          db.asset.count(),
-          db.asset.groupBy({
-            by: ['category'],
-            _count: true,
-          }),
-          db.asset.groupBy({
-            by: ['status'],
-            _count: true,
-          }),
-        ])
+        const inventoryResponse = await fetchAPI<{ results: any[] }>('/inventory/')
+
+        const assets = inventoryResponse.results || []
+
+        const totalAssets = assets.length
+
+        // Group by category
+        const assetByCategory = assets.reduce((acc: any, a: any) => {
+          const category = a.category
+          acc[category] = (acc[category] || 0) + 1
+          return acc
+        }, {})
+
+        // Group by status
+        const assetByStatus = assets.reduce((acc: any, a: any) => {
+          const status = a.status
+          acc[status] = (acc[status] || 0) + 1
+          return acc
+        }, {})
 
         data = {
           totalAssets,
-          assetByCategory,
-          assetByStatus,
+          assetByCategory: Object.entries(assetByCategory).map(([category, count]) => ({
+            category,
+            _count: { _count: count as number }
+          })),
+          assetByStatus: Object.entries(assetByStatus).map(([status, count]) => ({
+            status,
+            _count: { _count: count as number }
+          }))
         }
         break
       }

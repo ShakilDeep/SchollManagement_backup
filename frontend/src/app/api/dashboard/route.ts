@@ -1,207 +1,23 @@
-import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from 'next/server'
+import { fetchAPI } from '@/lib/api/client'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Get current academic year
-    const currentAcademicYear = await db.academicYear.findFirst({
-      where: { isCurrent: true },
-    })
+    const cookies = request.headers.get('cookie') || ''
+    const data = await fetchAPI('/dashboard/', { cookies })
 
-    const academicYearId = currentAcademicYear?.id
-
-    // Get stats
-    const [
-      totalStudents,
-      totalTeachers,
-      totalParents,
-      totalGrades,
-      activeStudents,
-      presentToday,
-      recentEnrollments,
-      upcomingExams,
-      libraryBooks,
-      transportVehicles,
-    ] = await Promise.all([
-      // Total students
-      db.student.count(),
-      
-      // Total teachers
-      db.teacher.count({
-        where: { status: 'Active' }
-      }),
-      
-      // Total parents
-      db.parent.count(),
-      
-      // Total grades
-      db.grade.count(),
-      
-      // Active students (current academic year)
-      academicYearId 
-        ? db.student.count({
-            where: { 
-              academicYearId,
-              status: 'Active'
-            }
-          })
-        : db.student.count({ where: { status: 'Active' } }),
-      
-      // Present today
-      db.attendance.count({
-        where: {
-          date: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-            lt: new Date(new Date().setHours(23, 59, 59, 999))
-          },
-          status: 'Present'
-        }
-      }),
-      
-      // Recent enrollments (last 7 days)
-      db.student.count({
-        where: {
-          admissionDate: {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-          }
-        }
-      }),
-      
-      // Upcoming exams (next 30 days)
-      db.exam.count({
-        where: {
-          startDate: {
-            gte: new Date(),
-            lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-          },
-          status: 'Upcoming'
-        }
-      }),
-      
-      // Total library books
-      db.book.aggregate({
-        _sum: { totalCopies: true }
-      }),
-      
-      // Active transport vehicles
-      db.vehicle.count({
-        where: { status: 'Active' }
-      })
-    ])
-
-    // Calculate attendance rate
-    const totalAttendanceToday = await db.attendance.count({
-      where: {
-        date: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          lt: new Date(new Date().setHours(23, 59, 59, 999))
-        }
-      }
-    })
-    const attendanceRate = totalAttendanceToday > 0 
-      ? Math.round((presentToday / totalAttendanceToday) * 100) 
-      : 0
-
-    // Get recent activities
-    const recentStudents = await db.student.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        grade: true,
-        section: true,
-      },
-    })
-
-    const recentActivities = recentStudents.map(student => ({
-      id: student.id,
-      type: 'student',
-      title: 'New student enrolled',
-      description: `${student.firstName} ${student.lastName} enrolled in ${student.grade.name}-${student.section.name}`,
-      time: getTimeAgo(student.createdAt),
-      status: 'success',
-      icon: 'Users'
-    }))
-
-    // Add recent attendance activities
-    const recentAttendanceRecords = await db.attendance.findMany({
-      take: 3,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        student: {
-          include: {
-            grade: true,
-            section: true,
-          }
-        }
-      },
-    })
-
-    recentAttendanceRecords.forEach(record => {
-      recentActivities.push({
-        id: record.id,
-        type: 'attendance',
-        title: `Attendance marked: ${record.status}`,
-        description: `${record.student.firstName} ${record.student.lastName} (${record.student.grade.name}-${record.student.section.name})`,
-        time: getTimeAgo(record.createdAt),
-        status: record.status === 'Present' ? 'success' : record.status === 'Absent' ? 'error' : 'warning',
-        icon: 'Calendar'
-      })
-    })
-
-    // Sort activities by time
-    recentActivities.sort((a, b) => b.time.localeCompare(a.time))
-
-    // Get highlights
-    const topGrade = await db.student.groupBy({
-      by: ['gradeId'],
-      where: academicYearId ? { academicYearId } : {},
-      _count: { id: true },
-      orderBy: { _count: { id: 'desc' } },
-      take: 1,
-    })
-
-    const gradeWithMostStudents = topGrade[0] 
-      ? await db.grade.findUnique({
-          where: { id: topGrade[0].gradeId },
-          select: { name: true }
-        })
-      : null
-
-    const highlights = [
-      {
-        title: 'Student Attendance',
-        value: `${attendanceRate}%`,
-        description: 'Average attendance this week',
-        trend: attendanceRate >= 90 ? 'up' : attendanceRate >= 75 ? 'stable' : 'down',
-        icon: 'Calendar'
-      },
-      {
-        title: 'Largest Grade',
-        value: gradeWithMostStudents?.name || 'N/A',
-        description: `${topGrade[0]?._count.id || 0} students`,
-        trend: 'stable',
-        icon: 'Users'
-      },
-      {
-        title: 'Library Books',
-        value: libraryBooks._sum.totalCopies?.toString() || '0',
-        description: 'Total books available',
-        trend: 'stable',
-        icon: 'BookOpen'
-      },
-      {
-        title: 'Transport Fleet',
-        value: transportVehicles.toString(),
-        description: 'Active vehicles',
-        trend: 'stable',
-        icon: 'Truck'
-      }
-    ]
+    const counts = data.counts || {}
+    const totalStudents = counts.totalStudents || counts.total_students || 0
+    const totalStaff = counts.totalStaff || counts.total_staff || 0
+    const totalGrades = counts.totalGrades || counts.total_grades || 0
+    const recentEnrollments = counts.recentEnrollments || counts.recent_enrollments || 0
+    const attendance = data.attendance || { rate: 0 }
+    const attendanceRate = attendance.rate || 0
 
     const stats = [
       {
         title: 'Total Students',
-        value: totalStudents.toLocaleString(),
+        value: Number(totalStudents).toLocaleString(),
         change: `+${recentEnrollments}`,
         trend: 'up',
         icon: 'Users',
@@ -210,7 +26,7 @@ export async function GET() {
       },
       {
         title: 'Teachers',
-        value: totalTeachers.toString(),
+        value: String(totalStaff),
         change: '+2',
         trend: 'up',
         icon: 'GraduationCap',
@@ -228,7 +44,7 @@ export async function GET() {
       },
       {
         title: 'Active Courses',
-        value: totalGrades.toString(),
+        value: String(totalGrades),
         change: '+1',
         trend: 'up',
         icon: 'BookOpen',
@@ -237,13 +53,61 @@ export async function GET() {
       }
     ]
 
+    const recentActivities = (data.recentActivities || data.recent_activities || []).map((activity: any) => ({
+      id: activity.id || Math.random().toString(36),
+      type: 'student',
+      title: 'New student enrolled',
+      description: `${activity.firstName || activity.first_name || ''} ${activity.lastName || activity.last_name || ''}`,
+      time: getTimeAgo(new Date(activity.createdAt || activity.created_at || new Date())),
+      status: 'success',
+      icon: 'Users'
+    }))
+
+    const analytics = data.analytics || {}
+    const gradeDistribution = analytics.gradeDistribution || analytics.grade_distribution || []
+    const libraryBooksTotal = counts.libraryBooksTotal || counts.library_books_total || 0
+    const activeVehicles = counts.activeVehicles || counts.active_vehicles || 0
+
+    const highlights = [
+      {
+        title: 'Student Attendance',
+        value: `${attendanceRate}%`,
+        description: 'Average attendance this week',
+        trend: attendanceRate >= 90 ? 'up' : attendanceRate >= 75 ? 'stable' : 'down',
+        icon: 'Calendar'
+      },
+      {
+        title: 'Largest Grade',
+        value: gradeDistribution[0]?.gradeName || gradeDistribution[0]?.grade__name || 'N/A',
+        description: `${gradeDistribution[0]?.count || 0} students`,
+        trend: 'stable',
+        icon: 'Users'
+      },
+      {
+        title: 'Library Books',
+        value: String(libraryBooksTotal),
+        description: 'Total books available',
+        trend: 'stable',
+        icon: 'BookOpen'
+      },
+      {
+        title: 'Transport Fleet',
+        value: String(activeVehicles),
+        description: 'Active vehicles',
+        trend: 'stable',
+        icon: 'Truck'
+      }
+    ]
+
     return NextResponse.json({
       stats,
       recentActivities: recentActivities.slice(0, 6),
-      highlights
+      highlights,
+      analytics: data.analytics
     })
 
   } catch (error) {
+    console.error('Dashboard API error:', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

@@ -1,18 +1,15 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from .models import UserRole
 from .serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer, ChangePasswordSerializer
-from .permissions import IsAdminOrSuperAdmin, IsPrincipalOrAdmin, IsOwnerOrReadOnly
 
 User = get_user_model()
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -22,13 +19,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
     def get_permissions(self):
-        if self.action == 'create':
-            return [IsAdminOrSuperAdmin()]
-        elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsOwnerOrReadOnly()]
-        elif self.action == 'list':
-            return [IsPrincipalOrAdmin()]
-        return [IsAuthenticated()]
+        return []
 
     def get_queryset(self):
         user = self.request.user

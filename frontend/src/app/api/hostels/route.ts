@@ -1,50 +1,21 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET() {
   try {
-    const hostels = await db.hostel.findMany({
-      include: {
-        rooms: {
-          include: {
-            allocations: {
-              where: { status: 'Active' },
-              include: {
-                student: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    rollNumber: true,
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    })
+    const response = await fetchAPI<{ results: any[] }>('/hostels/')
+    const hostels = response.results || []
 
-    const formattedHostels = hostels.map(hostel => ({
+    const formattedHostels = hostels.map((hostel: any) => ({
       id: hostel.id,
-      name: hostel.name,
+      name: hostel.name || 'Unknown',
       type: hostel.type,
-      capacity: hostel.capacity,
-      currentOccupancy: hostel.rooms.reduce((sum, room) => sum + room.allocations.length, 0),
-      wardenName: hostel.wardenName,
-      wardenPhone: hostel.wardenPhone,
+      capacity: hostel.capacity || 0,
+      currentOccupancy: hostel.current_occupancy || hostel.currentOccupancy || 0,
+      wardenName: hostel.warden_name || hostel.wardenName,
+      wardenPhone: hostel.warden_phone || hostel.wardenPhone,
       address: hostel.address,
-      rooms: hostel.rooms.map(room => ({
-        id: room.id,
-        roomNumber: room.roomNumber,
-        floor: room.floor,
-        capacity: room.capacity,
-        currentOccupancy: room.allocations.length,
-        type: room.type,
-      })),
+      rooms: hostel.rooms || [],
     }))
 
     return NextResponse.json(formattedHostels)
@@ -70,15 +41,16 @@ export async function POST(req: Request) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    const hostel = await db.hostel.create({
-      data: {
+    const hostel = await fetchAPI('/hostels/', {
+      method: 'POST',
+      body: JSON.stringify({
         name,
         type,
         capacity: parseInt(capacity),
-        wardenName,
-        wardenPhone,
+        warden_name: wardenName,
+        warden_phone: wardenPhone,
         address,
-      },
+      })
     })
 
     return NextResponse.json(hostel, { status: 201 })

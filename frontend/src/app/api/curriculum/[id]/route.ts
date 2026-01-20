@@ -1,83 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const curriculum = await db.curriculum.findUnique({
-      where: { id: params.id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        objectives: true,
-        topics: true,
-        createdAt: true,
-        updatedAt: true,
-        subject: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true
-          }
-        },
-        grade: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        academicYear: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        lessons: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            date: true,
-            duration: true,
-            status: true,
-            teacher: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                user: {
-                  select: {
-                    name: true,
-                    email: true
-                  }
-                }
-              }
-            },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                color: true
-              }
-            }
-          },
-          orderBy: {
-            date: 'asc'
-          }
-        }
-      }
-    })
+    const curriculum = await fetchAPI<any>(`/curriculum/${params.id}/`)
 
-    if (!curriculum) {
-      return NextResponse.json({ error: 'Curriculum not found' }, { status: 404 })
+    const transformedCurriculum = {
+      id: curriculum.id,
+      name: curriculum.name || 'Unknown',
+      description: curriculum.description,
+      objectives: curriculum.objectives || [],
+      topics: curriculum.topics || [],
+      createdAt: curriculum.created_at || curriculum.createdAt,
+      updatedAt: curriculum.updated_at || curriculum.updatedAt,
+      subject: curriculum.subject_details || curriculum.subject,
+      grade: curriculum.grade_details || curriculum.grade,
+      academicYear: curriculum.academic_year_details || curriculum.academicYear,
+      lessons: curriculum.lessons || [],
     }
 
-    return NextResponse.json(curriculum)
+    return NextResponse.json(transformedCurriculum)
   } catch (error) {
     console.error('Error fetching curriculum:', error)
     return NextResponse.json({ error: 'Failed to fetch curriculum' }, { status: 500 })
@@ -91,49 +36,33 @@ export async function PUT(
   try {
     const body = await request.json()
 
-    const curriculum = await db.curriculum.update({
-      where: { id: params.id },
-      data: {
+    const curriculum = await fetchAPI(`/curriculum/${params.id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({
         name: body.name,
-        subjectId: body.subjectId,
-        gradeId: body.gradeId,
-        academicYearId: body.academicYearId,
+        subject: body.subjectId,
+        grade: body.gradeId,
+        academic_year: body.academicYearId,
         description: body.description,
         objectives: body.objectives,
         topics: body.topics
-      },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        objectives: true,
-        topics: true,
-        createdAt: true,
-        updatedAt: true,
-        subject: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true
-          }
-        },
-        grade: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        academicYear: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      })
     })
 
-    return NextResponse.json(curriculum)
+    const transformedCurriculum = {
+      id: curriculum.id,
+      name: curriculum.name || 'Unknown',
+      description: curriculum.description,
+      objectives: curriculum.objectives || [],
+      topics: curriculum.topics || [],
+      createdAt: curriculum.created_at || curriculum.createdAt,
+      updatedAt: curriculum.updated_at || curriculum.updatedAt,
+      subject: curriculum.subject_details || curriculum.subject,
+      grade: curriculum.grade_details || curriculum.grade,
+      academicYear: curriculum.academic_year_details || curriculum.academicYear,
+    }
+
+    return NextResponse.json(transformedCurriculum)
   } catch (error) {
     console.error('Error updating curriculum:', error)
     return NextResponse.json({ error: 'Failed to update curriculum' }, { status: 500 })
@@ -145,8 +74,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await db.curriculum.delete({
-      where: { id: params.id }
+    await fetchAPI(`/curriculum/${params.id}/`, {
+      method: 'DELETE'
     })
 
     return NextResponse.json({ message: 'Curriculum deleted successfully' })

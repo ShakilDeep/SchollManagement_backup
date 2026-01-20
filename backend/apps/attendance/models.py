@@ -31,7 +31,7 @@ class Attendance(models.Model):
         return f"{self.student} - {self.date} - {self.type}"
 
 class AttendanceSummary(models.Model):
-    id = models.CharField(max_length=255, primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     month = models.IntegerField()
     year = models.IntegerField()
@@ -46,6 +46,7 @@ class AttendanceSummary(models.Model):
         unique_together = ['student', 'month', 'year']
         indexes = [
             models.Index(fields=['student', 'month', 'year']),
+            models.Index(fields=['year', 'month']),
         ]
 
     def __str__(self):

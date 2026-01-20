@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { attendancePredictionService } from '@/lib/ai/services/attendance-prediction-service'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,18 +48,20 @@ export async function GET(request: NextRequest) {
 }
 
 async function handleBatchPrediction(gradeId: string | null, sectionId: string | null, targetDate: Date) {
-  const whereClause: any = { status: 'Active' }
+  // Build query parameters for backend API
+  const queryParams: Record<string, string> = {}
+  if (gradeId) queryParams.grade = gradeId
+  if (sectionId) queryParams.section = sectionId
+  queryParams.status = 'Active'
 
-  if (gradeId) whereClause.gradeId = gradeId
-  if (sectionId) whereClause.sectionId = sectionId
+  // Fetch students from Django backend API
+  const studentsResponse = await fetchAPI<{ results: any[] }>('/students/', { query: queryParams })
+  const students = studentsResponse.results || []
 
-  const students = await db.student.findMany({
-    where: whereClause,
-    select: { id: true },
-    take: 50
-  })
+  // Limit to 50 students for performance
+  const limitedStudents = students.slice(0, 50)
 
-  const studentIds = students.map(s => s.id)
+  const studentIds = limitedStudents.map(s => s.id)
   const predictions = await attendancePredictionService.predictBatchAttendance(studentIds, targetDate)
 
   return NextResponse.json({
@@ -69,8 +71,8 @@ async function handleBatchPrediction(gradeId: string | null, sectionId: string |
       highConfidence: predictions.filter(p => p.confidence >= 0.85).length,
       predictedPresent: predictions.filter(p => p.predictedStatus === 'Present').length,
       predictedAbsent: predictions.filter(p => p.predictedStatus === 'Absent').length,
-      averageConfidence: predictions.length > 0 
-        ? predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length 
+      averageConfidence: predictions.length > 0
+        ? predictions.reduce((sum, p) => sum + p.confidence, 0) / predictions.length
         : 0
     }
   })

@@ -57,7 +57,7 @@ export const StudentCard = memo(({ student }: StudentCardProps) => {
           'bg-gradient-to-br from-violet-500 to-purple-600',
           'shadow-lg shadow-violet-500/30'
         )}>
-          {student.avatar}
+          {student.avatar || (student.name || student.fullName || 'U').charAt(0).toUpperCase()}
         </div>
       </div>
 
@@ -67,13 +67,13 @@ export const StudentCard = memo(({ student }: StudentCardProps) => {
             {student.rollNumber}
           </p>
           <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-            {student.name}
+            {student.name || student.fullName || 'Unknown'}
           </h3>
         </div>
         
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <MapPin className="w-4 h-4" />
-          <span>{student.grade} - {student.section}</span>
+          <span>{student.gradeName || student.gradeDisplay || student.grade} - {student.sectionName || student.sectionDisplay || student.section}</span>
         </div>
 
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">

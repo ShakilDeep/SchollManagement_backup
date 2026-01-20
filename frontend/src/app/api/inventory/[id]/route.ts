@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const asset = await db.asset.findUnique({
-      where: {
-        id: params.id,
-      },
-    })
-
-    if (!asset) {
-      return NextResponse.json(
-        { error: 'Asset not found' },
-        { status: 404 }
-      )
-    }
+    const asset = await fetchAPI<any>(`/inventory/${params.id}/`)
 
     const responseData = {
       id: asset.id,
-      assetCode: asset.assetCode,
+      assetCode: asset.asset_code || asset.assetCode,
       name: asset.name,
       category: asset.category,
       description: asset.description,
-      serialNumber: asset.serialNumber,
-      purchaseDate: asset.purchaseDate ? asset.purchaseDate.toISOString().split('T')[0] : null,
-      purchasePrice: asset.purchasePrice,
-      currentValue: asset.currentValue,
+      serialNumber: asset.serial_number || asset.serialNumber,
+      purchaseDate: asset.purchase_date || asset.purchaseDate,
+      purchasePrice: asset.purchase_price || asset.purchasePrice,
+      currentValue: asset.current_value || asset.currentValue,
       condition: asset.condition,
       location: asset.location,
-      assignedTo: asset.assignedTo,
+      assignedTo: asset.assigned_to || asset.assignedTo,
       status: asset.status,
     }
 
@@ -65,38 +54,36 @@ export async function PATCH(
       status,
     } = body
 
-    const asset = await db.asset.update({
-      where: {
-        id: params.id,
-      },
-      data: {
+    const asset = await fetchAPI(`/inventory/${params.id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({
         ...(name && { name }),
         ...(category && { category }),
         ...(description !== undefined && { description }),
-        ...(serialNumber !== undefined && { serialNumber }),
-        ...(purchaseDate && { purchaseDate: new Date(purchaseDate) }),
-        ...(purchasePrice !== undefined && { purchasePrice: parseFloat(purchasePrice) }),
-        ...(currentValue !== undefined && { currentValue: parseFloat(currentValue) }),
+        ...(serialNumber !== undefined && { serial_number: serialNumber }),
+        ...(purchaseDate && { purchase_date: purchaseDate }),
+        ...(purchasePrice !== undefined && { purchase_price: parseFloat(purchasePrice) }),
+        ...(currentValue !== undefined && { current_value: parseFloat(currentValue) }),
         ...(condition && { condition }),
         ...(location !== undefined && { location }),
-        ...(assignedTo !== undefined && { assignedTo }),
+        ...(assignedTo !== undefined && { assigned_to: assignedTo }),
         ...(status && { status }),
-      },
+      })
     })
 
     const responseData = {
       id: asset.id,
-      assetCode: asset.assetCode,
+      assetCode: asset.asset_code || asset.assetCode,
       name: asset.name,
       category: asset.category,
       description: asset.description,
-      serialNumber: asset.serialNumber,
-      purchaseDate: asset.purchaseDate ? asset.purchaseDate.toISOString().split('T')[0] : null,
-      purchasePrice: asset.purchasePrice,
-      currentValue: asset.currentValue,
+      serialNumber: asset.serial_number || asset.serialNumber,
+      purchaseDate: asset.purchase_date || asset.purchaseDate,
+      purchasePrice: asset.purchase_price || asset.purchasePrice,
+      currentValue: asset.current_value || asset.currentValue,
       condition: asset.condition,
       location: asset.location,
-      assignedTo: asset.assignedTo,
+      assignedTo: asset.assigned_to || asset.assignedTo,
       status: asset.status,
     }
 
@@ -115,10 +102,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await db.asset.delete({
-      where: {
-        id: params.id,
-      },
+    await fetchAPI(`/inventory/${params.id}/`, {
+      method: 'DELETE'
     })
 
     return NextResponse.json({ success: true })

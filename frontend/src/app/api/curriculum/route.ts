@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { fetchAPI } from '@/lib/api/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,80 +8,28 @@ export async function GET(request: NextRequest) {
     const gradeId = searchParams.get('gradeId')
     const academicYearId = searchParams.get('academicYearId')
 
-    const where: any = {}
-    if (subjectId) where.subjectId = subjectId
-    if (gradeId) where.gradeId = gradeId
-    if (academicYearId) where.academicYearId = academicYearId
+    // Build query parameters for backend API
+    const queryParams: Record<string, string> = {}
+    if (subjectId) queryParams.subject = subjectId
+    if (gradeId) queryParams.grade = gradeId
+    if (academicYearId) queryParams.academic_year = academicYearId
 
-    const curriculums = await db.curriculum.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        objectives: true,
-        topics: true,
-        subject: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true
-          }
-        },
-        grade: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        academicYear: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        lessons: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            date: true,
-            duration: true,
-            status: true,
-            teacher: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                user: {
-                  select: {
-                    name: true,
-                    email: true
-                  }
-                }
-              }
-            },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                color: true
-              }
-            }
-          },
-          orderBy: {
-            date: 'asc'
-          }
-        }
-      },
-      orderBy: {
-        name: 'asc'
-      }
-    })
+    const response = await fetchAPI<{ results: any[] }>('/curriculum/', { query: queryParams })
+    const curriculums = response.results || []
 
-    return NextResponse.json(curriculums)
+    const transformedCurriculums = curriculums.map((c: any) => ({
+      id: c.id,
+      name: c.name || 'Unknown',
+      description: c.description,
+      objectives: c.objectives || [],
+      topics: c.topics || [],
+      subject: c.subject_details || c.subject,
+      grade: c.grade_details || c.grade,
+      academicYear: c.academic_year_details || c.academicYear,
+      lessons: c.lessons || [],
+    }))
+
+    return NextResponse.json(transformedCurriculums)
   } catch (error) {
     console.error('Error fetching curriculums:', error)
     return NextResponse.json({ error: 'Failed to fetch curriculums' }, { status: 500 })
@@ -92,43 +40,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const curriculum = await db.curriculum.create({
-      data: {
+    const curriculum = await fetchAPI('/curriculum/', {
+      method: 'POST',
+      body: JSON.stringify({
         name: body.name,
-        subjectId: body.subjectId,
-        gradeId: body.gradeId,
-        academicYearId: body.academicYearId,
+        subject: body.subjectId,
+        grade: body.gradeId,
+        academic_year: body.academicYearId,
         description: body.description,
         objectives: body.objectives,
         topics: body.topics
-      },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        objectives: true,
-        topics: true,
-        subject: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true
-          }
-        },
-        grade: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        academicYear: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
+      })
     })
 
     return NextResponse.json(curriculum, { status: 201 })
